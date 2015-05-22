@@ -1,5 +1,5 @@
 /*
- * -vrunner
+ * vrunner
  * http://vrest.io
  *
  * Copyright (c) 2015 vREST Team
@@ -29,6 +29,10 @@ var request = require('request').defaults({jar: true,json:true}),
       },
       pageSize : 100,
       methodCodes : {
+      },
+      authorizations : {
+      },
+      validatorIdCodeMap : {
       },
       variables : {
       }
