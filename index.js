@@ -10,14 +10,14 @@
 
 var request = require('request').defaults({jar: true,json:true}),
     zSchemaValidator = require('z-schema'),
-    jsonSchemaFiles = require('../lib/schemaFiles'),
-    util = require('../lib/util'),
-    runner = require('../lib/testRunner'),
-    OAuth1 = require('../lib/oauth-1_0'),
-    JSONPath = require('../lib/jsonpath'),
+    jsonSchemaFiles = require('./lib/schemaFiles'),
+    util = require('./lib/util'),
+    runner = require('./lib/testRunner'),
+    OAuth1 = require('./lib/oauth-1_0'),
+    JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
     V_BASE_URL = 'http://localhost:3000/',
-    RUNNER_LIMIT : 5000,
+    RUNNER_LIMIT = 5000,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
     START_VAR_EXPR = '{{',
@@ -50,7 +50,7 @@ var getInstanceName = function(url){
 
 var fetchSinglePage = function(url,page,pageSize,next,cb){
   console.log('---> Fetching '+pageSize+' testcases at page '+page+' ...');
-  request(url+'&pageSize='+pageSize+'currentPage='page, function(err,res,body){
+  request(url+'&pageSize='+pageSize+'currentPage='+page, function(err,res,body){
     if(err) next(['Error found at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
       next('You can not execute more than '+RUNNER_LIMIT+ 'test cases in one go.');
@@ -83,10 +83,13 @@ var hasRunPermission = function(instance,project,next){
 };
 
 var findHelpers = function(instanceURL,what,project,next){
-  request(instanceURL+'/g/'+what+'?&projectId='+project+',
+  request(instanceURL+'/g/'+what+'?&projectId='+project,
     function(err,res,body){
       if(err) next(err);
-      else next(null,body.output);
+      else {
+        if(!Array.isArray(body.output)) body.output = [];
+        next(null,body.output);
+      }
   });
 };
 
@@ -108,7 +111,7 @@ var completeURL = function(tc) {
   return tc;
 };
 
-var getOAuthTwoHeader(ath){
+var getOAuthTwoHeader = function(ath){
   var authConfig = ath.authConfig || {};
   return (authConfig.accessTokenType || 'OAuth') + ' ' + authConfig.accessToken;
 };
@@ -153,7 +156,7 @@ var getContentType = function(responseHeaders){
   return null;
 };
 
-var getResultType : function(response) {
+var getResultType = function(response) {
   var rType = 'text';
   var contentType = getContentType(response.responseHeaders);
   if(contentType){
@@ -285,15 +288,17 @@ function vRunner(opts){
   }
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
-  if(!util.isURL(this.url)) throw new Error('vRunner : URL to fetch test cases not found.');
+  if(typeof this.url !== 'string' || !this.url) throw new Error('vRunner : URL to fetch test cases not found.');
   queryObject = util.parseQuery(this.url);
   error = util.validateObj(queryObject, { projectId : { regex : MONGO_REGEX } });
   if(error) throw new Error('vRunner : INVALID_QUERY_STRING : ' + error);
-  this.url = util.beautifyURL(V_BASE_URL,this.url);
+  if(queryObject.hasOwnProperty('currentPage')) delete queryObject.currentPage;
+  if(queryObject.hasOwnProperty('pageSize')) delete queryObject.pageSize;
+  this.url = util.beautifyURL(V_BASE_URL,this.url,queryObject);
   this.projectId = queryObject.projectId;
   this.filters = queryObject;
   this.instanceName = getInstanceName(this.url);
-  this.instanceURL = V_BASE_URL+'/'ORG_URL_PREFIX+this.instanceName;
+  this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
   this.pendingTrtc = [];
 };
 
@@ -310,7 +315,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     var toSend = { list : util.cloneObject(this.pendingTrtc) };
     this.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err) next(['Error found while saving execution results : ', body]);;
+      if(err) next(['Error found while saving execution results : ', body]);
       else next(null);
     });
   }
@@ -319,7 +324,9 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
 vRunner.prototype.run = function(next){
   var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0 };
   var tasks = [
-    this.sigIn,
+    function(cb){
+      self.sigIn(cb);
+    },
     function(cb){
       hasRunPermission(self.instanceName,self.projectId,cb);
     },
@@ -348,7 +355,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self.instanceURL,'validator',self.projectId,function(err,vals){
+      findHelpers(self.instanceURL,'responsevalidator',self.projectId,function(err,vals){
         if(err) cb(err);
         else {
           self.validatorIdCodeMap = {};
@@ -360,8 +367,8 @@ vRunner.prototype.run = function(next){
             } catch(e){
             }
           });
-          var ZSV = new ZSchemaValidator({ breakOnFirstError: false });
-          var sk = JSONSchemaFiles();
+          var ZSV = new zSchemaValidator({ breakOnFirstError: false });
+          var sk = jsonSchemaFiles();
           ZSV.setRemoteReference('http://json-schema.org/draft-04/schema#', sk.draft04ValidatorFile);
           var ifDraft03 = function(bv){ return (bv.$schema && bv.$schema.indexOf('draft-03') !== -1); };
           self.methodCodes.validateJSONSchema = function(av,bv){
@@ -459,3 +466,5 @@ vRunner.prototype.run = function(next){
     saveReport(err,self.instanceURL + '/'+self.testRunId,report,next);
   });
 };
+
+module.exports = vRunner;

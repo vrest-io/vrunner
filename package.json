@@ -1,5 +1,5 @@
 {
-  "name": "grunt-vrunner",
+  "name": "vrunner",
   "description": "Runs vREST test cases.",
   "version": "0.0.1",
   "homepage": "http://vrest.io",
