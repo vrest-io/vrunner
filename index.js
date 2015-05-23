@@ -48,17 +48,18 @@ var getInstanceName = function(url){
   return String(instanceName);
 };
 
-var fetchSinglePage = function(url,page,pageSize,next,cb){
-  console.log('---> Fetching '+pageSize+' testcases at page '+page+' ...');
+var fetchSinglePage = function(url,page,pageSize,af,cb,next){
+  console.log('---> Fetching '+pageSize+' testcases at page '+(page+1)+' ...');
   request(url+'&pageSize='+pageSize+'currentPage='+page, function(err,res,body){
-    if(err) next(['Error found at page '+page+' :', body]);
+    if(err || body.error) af(['Error found while fetching test cases at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
-      next('You can not execute more than '+RUNNER_LIMIT+ 'test cases in one go.');
-    else next(null, body.output, body.total !== pageSize,url,page,pageSize,next,cb);
+      af('You can not execute more than '+RUNNER_LIMIT+ ' test cases in one go.');
+    else af(null, body.output, body.total !== pageSize,url,page,pageSize,cb,next);
   });
 };
 
-var afterFetch = function(err,body,last,url,page,pageSize,next,cb){
+
+var afterFetch = function(err,body,last,url,page,pageSize,cb,next){
   if(err) next(err);
   else {
     util.recForEach({
@@ -68,24 +69,34 @@ var afterFetch = function(err,body,last,url,page,pageSize,next,cb){
       cb : function(err){
         if(err) next(err);
         else if(last) next();
-        else fetchSinglePage(url,(++page),pageSize,afterFetch,cb);
+        else fetchSinglePage(url,(page+1),pageSize,eachPage,cb,next);
       }
     });
   }
 };
 
+var eachPage = afterFetch;
+
 var fetchAndServe = function(url, pageSize, cb, next){
-  fetchSinglePage(url,0,pageSize,afterFetch,cb);
+  fetchSinglePage(url,0,pageSize,afterFetch,cb,next);
 };
 
 var hasRunPermission = function(instance,project,next){
-  request(V_BASE_URL+'/user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance, next);
+  console.log('---> Checking permission to execute test case in project ...');
+  request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
+  function(err,res,body){
+    if(err || body.error) next(['Error while checking execute permission  :', err||body]);
+    else if(!body.output) next('Internal permission error.');
+    else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT');
+    else next();
+  });
 };
 
 var findHelpers = function(instanceURL,what,project,next){
+  console.log('---> finding '+what+'s ...');
   request(instanceURL+'/g/'+what+'?&projectId='+project,
     function(err,res,body){
-      if(err) next(err);
+      if(err || body.error) next(['Error while fetching '+what+'s :', err||body]);
       else {
         if(!Array.isArray(body.output)) body.output = [];
         next(null,body.output);
@@ -94,9 +105,14 @@ var findHelpers = function(instanceURL,what,project,next){
 };
 
 var createTestRun = function(instanceURL,filterData,next){
+  console.log('---> Creating test run ...');
+  var filters = util.cloneObject(filterData);
+  filters.currentPage = 0;
+  filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
-    body: { name : util.getReadableDate(), projectId : true, filterData : filterData } }, function(err,res,body){
-      if(err) next(['Error found while creating test run : ', body]); else next(null,body);
+    body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
+      if(err || body.error) next(['Error while creating test run : ',err||body]);
+      else next(null,body.output);
   });
 };
 
@@ -201,7 +217,6 @@ var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
     switch(result.resultType) {
       case 'json' :
-        var self = this;
         var jsonData = util.getJsonOrString(result.content);
         if(typeof(jsonData) != 'object') return;
         tc.tcVariables.forEach(function(vr){
@@ -251,6 +266,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
 };
 
 var saveReport = function(error,url,report,next){
+  console.log('---> Saving test case report ...');
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -261,8 +277,8 @@ var saveReport = function(error,url,report,next){
     remarks : error ? util.stringify(error) : 'All test cases executed successfully.'
   }}, function(err,response,body){
     if(error) next(error);
-    else if(err) next(body);
-    else next(null, body);
+    else if(err || body.error) next(['Error while saving report : ', err||body]);
+    else next(null, body.output.statistics);
   });
 };
 
@@ -305,19 +321,26 @@ function vRunner(opts){
 vRunner.prototype.sigIn = function(next){
   console.log('---> Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
-    if(err) next(['Error found while logging you in : ', body]); else next(null,body);
+    if(err || body.error) next(err||body);
+    else next(null,body);
   });
 };
 
 vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
-  this.pendingTrtc.push(trtc);
-  if(this.pendingTrtc.length === TRTC_BATCH){
-    var toSend = { list : util.cloneObject(this.pendingTrtc) };
-    this.pendingTrtc = [];
+  var self = this;
+  var sendNow = function(){
+    var toSend = { list : util.cloneObject(self.pendingTrtc) };
+    self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err) next(['Error found while saving execution results : ', body]);
+      if(err || body.error) next(err||body);
       else next(null);
     });
+  };
+  if(trtc === 'OVER' && this.pendingTrtc.length) sendNow();
+  else {
+    this.pendingTrtc.push(trtc);
+    if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
+    else next(null);
   }
 };
 
@@ -388,11 +411,14 @@ vRunner.prototype.run = function(next){
     function(cb){
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
         if(err) cb(err);
-        self.testRunId = testrun.id;
+        else {
+          self.testRunId = testrun.id;
+          cb();
+        }
       });
     },
     function(cb){
-      fetchAndServe(self.url, self.pageSize, function(tc){
+      fetchAndServe(self.url, self.pageSize, function(tc,cb0){
         var trtc = {
           result: {
             headers : [],
@@ -418,7 +444,7 @@ vRunner.prototype.run = function(next){
           }
           self.sendToServer(self.instanceName,trtc,function(err){
             if(err) console.log(err);
-            cb();
+            cb0();
           });
         };
         if(tc.runnable){
@@ -432,7 +458,7 @@ vRunner.prototype.run = function(next){
           tc = completeURL(tc);
           trtc.executionTime = new Date().getTime();
           fireRequest(tc,trtc,function(result){
-            var self = this, isPassed = false, remarks = '', isExecuted = false;
+            var isPassed = false, remarks = '', isExecuted = false;
             if(result === undefined || result === null) {
               remarks = 'An unknown error occurred while receiving response for the Test case.';
             } else if(result.err) {
@@ -444,7 +470,7 @@ vRunner.prototype.run = function(next){
               isExecuted = true;
               var err = result.err, response = result.response, headers = parseResponseHeaders(response);
               response.responseHeaders = headers;
-              var actualResults = this.getActualResults(response);
+              var actualResults = getActualResults(response);
               trtc.result = actualResults;
               extractVarsFrom(tc, actualResults, self.variables);
               trtc.variable = util.cloneObject(self.variables);
@@ -462,8 +488,11 @@ vRunner.prototype.run = function(next){
       },cb);
     }
   ];
-  util.recForEach(tasks,function(err){
-    saveReport(err,self.instanceURL + '/'+self.testRunId,report,next);
+  util.series(tasks,function(err){
+    self.sendToServer(self.instanceURL,'OVER',function(err){
+      if(err) console.log('Error occurred while saving execution results : ', err);
+      saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
+    });
   });
 };
 
