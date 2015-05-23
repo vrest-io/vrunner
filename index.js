@@ -231,9 +231,9 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
   if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
     toSendTC.expectedResults.content =
-      JSON.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
+      util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
-            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }));
+            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
       isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
