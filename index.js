@@ -16,7 +16,7 @@ var request = require('request').defaults({jar: true,json:true}),
     OAuth1 = require('./lib/oauth-1_0'),
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
-    V_BASE_URL = 'http://localhost:3000/',
+    V_BASE_URL = 'http://vrest.io/',
     RUNNER_LIMIT = 5000,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -110,7 +110,7 @@ var createTestRun = function(instanceURL,filterData,next){
   filters.currentPage = 0;
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
-    body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
+    body: { name : new Date(), projectId : true, filterData : filters } }, function(err,res,body){
       if(err || body.error) next(['Error while creating test run : ',err||body]);
       else next(null,body.output);
   });
@@ -410,8 +410,10 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
-        if(err) cb(err);
-        else {
+        if(err) {
+          console.log(err);
+          cb(err);
+        } else {
           self.testRunId = testrun.id;
           cb();
         }
