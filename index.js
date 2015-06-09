@@ -10,6 +10,7 @@
 
 var request = require('request').defaults({jar: true,json:true}),
     zSchemaValidator = require('z-schema'),
+    events = require('events'),
     jsonSchemaFiles = require('./lib/schemaFiles'),
     util = require('./lib/util'),
     runner = require('./lib/testRunner'),
@@ -21,7 +22,7 @@ var request = require('request').defaults({jar: true,json:true}),
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
     START_VAR_EXPR = '{{',
-    END_VAR_EXPR = '{{',
+    END_VAR_EXPR = '}}',
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     options = {
@@ -49,12 +50,12 @@ var getInstanceName = function(url){
 };
 
 var fetchSinglePage = function(url,page,pageSize,af,cb,next){
-  console.log('---> Fetching '+pageSize+' testcases at page '+(page+1)+' ...');
-  request(url+'&pageSize='+pageSize+'currentPage='+page, function(err,res,body){
+  console.log('---> Fetching upto '+pageSize+' testcases at page '+(page+1)+' ...');
+  request(url+'&pageSize='+pageSize+'&currentPage='+page, function(err,res,body){
     if(err || body.error) af(['Error found while fetching test cases at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
       af('You can not execute more than '+RUNNER_LIMIT+ ' test cases in one go.');
-    else af(null, body.output, body.total !== pageSize,url,page,pageSize,cb,next);
+    else af(null, body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next);
   });
 };
 
@@ -151,7 +152,9 @@ var getAuthHeader = function(ath){
 
 var fireRequest = function(tc,trtc,callback){
   runner({ testcase : tc },function(result){
-    if(!result || result.err) { console.log(result); }
+    if(!result || result.err) {
+      //console.log(result);
+    }
     trtc.executionTime = new Date().getTime() - trtc.executionTime;
     callback(result);
   });
@@ -206,7 +209,7 @@ var parseResponseHeaders= function(response){
 
 var getActualResults = function(response) {
   return {
-    statusCode : response.status,
+    statusCode : response.statusCode,
     headers : util.mapToArray(response.responseHeaders),
     content: response.body,
     resultType: getResultType(response)
@@ -244,19 +247,22 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
   toSendTC.expectedResults.content =
     util.searchAndReplaceString(toSendTC.expectedResults.content, util.cloneObject(variables),
         { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
-  var toSendTRTC = { headers : {} };
+  var toSendTRTC = { headers : {} }, tcValId = String(toSendTC.responseValidatorId);
   toSendTRTC.actualResults = actualResults;
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
-  if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
+  if(typeof validatorIdCodeMap[tcValId] === 'function') {
     toSendTC.expectedResults.content =
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
             function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
-      isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
+      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
-      if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
-      else if(remarks.length > 2000) remarks = remarks.substring(0, 1993) + '....';
+      if(remarks.length > 3 && remarks.length < 2000) {
+        //console.log(remarks);
+      } else if(remarks.length > 2000){
+        remarks = remarks.substring(0, 1993) + '....';
+      }
       runnerModel.remarks = remarks;
     }
   } else {
@@ -266,7 +272,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
 };
 
 var saveReport = function(error,url,report,next){
-  console.log('---> Saving test case report ...');
+  console.log('---> Saving test run execution report ...');
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -278,7 +284,7 @@ var saveReport = function(error,url,report,next){
   }}, function(err,response,body){
     if(error) next(error);
     else if(err || body.error) next(['Error while saving report : ', err||body]);
-    else next(null, body.output.statistics);
+    else next(null, body.output.statistics, body.output.remarks);
   });
 };
 
@@ -317,6 +323,8 @@ function vRunner(opts){
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
   this.pendingTrtc = [];
 };
+
+vRunner.prototype = new events.EventEmitter;
 
 vRunner.prototype.sigIn = function(next){
   console.log('---> Logging you in ...');
@@ -383,12 +391,9 @@ vRunner.prototype.run = function(next){
         else {
           self.validatorIdCodeMap = {};
           vals.forEach(function(model){
-            try {
-              var func = eval(model.code);
-              if(model.isUtil) self.methodCodes[model.name] = model.code;
-              else self.validatorIdCodeMap[model.id] = model.code;
-            } catch(e){
-            }
+            var func = eval(model.code);
+            if(model.isUtil) self.methodCodes[model.name] = model.code;
+            else try { self.validatorIdCodeMap[model.id] = eval(model.code); } catch(e){ };
           });
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
@@ -428,24 +433,32 @@ vRunner.prototype.run = function(next){
             content: '',
             resultType: 'text'
           },
+          testRunId : self.testRunId,
+          testCaseId : tc.id,
           executionTime: 0
         };
         var over = function(){
           report.total++;
           if(trtc.isExecuted){
             if(trtc.isPassed) {
-              console.log(tc.method +' --> '+tc.url+ ' --> PASSED');
+              //console.log(tc.method +' --> '+tc.url+ ' --> PASSED');
               report.passed++;
+              self.emit('testcase',true,tc,trtc);
             } else {
-              console.log(tc.method +' --> '+tc.url+ ' --> FAILED');
+              //console.log(tc.method +' --> '+tc.url+ ' --> FAILED');
               report.failed++;
+              self.emit('testcase',false,tc,trtc);
             }
           } else {
-            console.log(tc.method +' --> '+tc.url+ ' --> NOT_EXECUTED');
+            //console.log(tc.method +' --> '+tc.url+ ' --> NOT_EXECUTED');
             report.notExecuted++;
+            self.emit('testcase',null,tc,trtc);
           }
-          self.sendToServer(self.instanceName,trtc,function(err){
-            if(err) console.log(err);
+          self.sendToServer(self.instanceURL,trtc,function(err){
+            if(err) {
+              //console.log('Error occurred while saving execution results : ', err);
+              self.emit('warning',err);
+            }
             cb0();
           });
         };
@@ -491,8 +504,12 @@ vRunner.prototype.run = function(next){
     }
   ];
   util.series(tasks,function(err){
+    if(err) self.emit('error',err);
     self.sendToServer(self.instanceURL,'OVER',function(err){
-      if(err) console.log('Error occurred while saving execution results : ', err);
+      if(err) {
+        self.emit('warning',err);
+        //console.log('Error occurred while saving execution results : ', err);
+      }
       saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
     });
   });
