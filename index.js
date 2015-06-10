@@ -86,9 +86,9 @@ var hasRunPermission = function(instance,project,next){
   console.log('---> Checking permission to execute test case in project ...');
   request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
-    if(err || body.error) next(['Error while checking execute permission  :', err||body]);
-    else if(!body.output) next('Internal permission error.');
-    else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT');
+    if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
+    else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
+    else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
     else next();
   });
 };
@@ -162,14 +162,6 @@ var fireRequest = function(tc,trtc,callback){
 
 var getContentType = function(responseHeaders){
   if(responseHeaders){
-    //return responseHeaders['Content-Type'] || responseHeaders['content-type'];
-    var i, count, name;
-    for(i = 0, count = responseHeaders.length; i < count; i++){
-      name = responseHeaders[i].name;
-      if(name.toLowerCase() === 'content-type'){
-        return responseHeaders[i].value;
-      }
-    }
     return responseHeaders['Content-Type'] || responseHeaders['content-type'];
   }
   return null;
@@ -177,7 +169,7 @@ var getContentType = function(responseHeaders){
 
 var getResultType = function(response) {
   var rType = 'text';
-  var contentType = getContentType(response.responseHeaders);
+  var contentType = getContentType(response.headers);
   if(contentType){
     if(contentType.indexOf('json') != -1) {
       rType = 'json';
@@ -190,28 +182,11 @@ var getResultType = function(response) {
   return rType;
 };
 
-var parseResponseHeaders= function(response){
-  var headers = {}, i, count;
-  if(response && response.responseHeaders){
-    var pairs = response.responseHeaders.split("\n"), str, pair;
-    for(i = 0, count = pairs.length; i < count; i++){
-      str = pairs[i];
-      if(str){
-        pair = str.split(": ");
-        if(pair && pair.length === 2){
-          headers[pair[0]] = pair[1];
-        }
-      }
-    }
-  }
-  return headers;
-};
-
 var getActualResults = function(response) {
   return {
     statusCode : response.statusCode,
-    headers : util.mapToArray(response.responseHeaders),
-    content: response.body,
+    headers : util.mapToArray(response.headers),
+    content: util.stringify(response.body, null, true),
     resultType: getResultType(response)
   };
 };
@@ -240,7 +215,7 @@ var extractVarsFrom = function(tc, result, tcVar) {
   return;
 };
 
-var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
+var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,methodCodes){
   var isPassed = false, actualResults = runnerModel.result, headers = runnerModel.result.headers;
   var jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
@@ -255,11 +230,11 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
             function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
-      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
+      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) {
-        //console.log(remarks);
+        console.log(remarks);
       } else if(remarks.length > 2000){
         remarks = remarks.substring(0, 1993) + '....';
       }
@@ -329,7 +304,7 @@ vRunner.prototype = new events.EventEmitter;
 vRunner.prototype.sigIn = function(next){
   console.log('---> Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
-    if(err || body.error) next(err||body);
+    if(err || body.error) next(err||body, 'VRUN_OVER');
     else next(null,body);
   });
 };
@@ -363,7 +338,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       findHelpers(self.instanceURL,'authorization',self.projectId,function(err,auths){
-        if(err) cb(err);
+        if(err) cb(err, 'VRUN_OVER');
         else {
           if(Array.isArray(auths)){
             for(var k=0;k<auths.length;k++){
@@ -376,7 +351,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       findHelpers(self.instanceURL,'variable',self.projectId,function(err,vars){
-        if(err) cb(err);
+        if(err) cb(err, 'VRUN_OVER');
         else {
           vars.forEach(function(vr){
             if(!self.variables.hasOwnProperty(vr.key)) self.variables[vr.key] = vr.value;
@@ -387,13 +362,12 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       findHelpers(self.instanceURL,'responsevalidator',self.projectId,function(err,vals){
-        if(err) cb(err);
+        if(err) cb(err, 'VRUN_OVER');
         else {
           self.validatorIdCodeMap = {};
           vals.forEach(function(model){
             var func = eval(model.code);
-            if(model.isUtil) self.methodCodes[model.name] = model.code;
-            else try { self.validatorIdCodeMap[model.id] = eval(model.code); } catch(e){ };
+            try { (model.isUtil ? self.methodCodes : self.validatorIdCodeMap)[( model.isUtil ? model.name : model.id)] = eval(model.code); } catch(e){ console.log(e); };
           });
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
@@ -415,10 +389,8 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
-        if(err) {
-          console.log(err);
-          cb(err);
-        } else {
+        if(err) cb(err, 'VRUN_OVER');
+        else {
           self.testRunId = testrun.id;
           cb();
         }
@@ -463,8 +435,7 @@ vRunner.prototype.run = function(next){
           });
         };
         if(tc.runnable){
-          tc = util.preProcessForSearchAndReplace(tc,
-            { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
+          tc = util.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
           if(tc.authorizationId){
             if(typeof self.authorizations[tc.authorizationId] === 'function'){
               tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
@@ -483,13 +454,11 @@ vRunner.prototype.run = function(next){
               remarks = 'No response received for this test case.';
             } else {
               isExecuted = true;
-              var err = result.err, response = result.response, headers = parseResponseHeaders(response);
-              response.responseHeaders = headers;
-              var actualResults = getActualResults(response);
+              var actualResults = getActualResults(result.response);
               trtc.result = actualResults;
               extractVarsFrom(tc, actualResults, self.variables);
               trtc.variable = util.cloneObject(self.variables);
-              isPassed = assertResults(tc,trtc,self.variables,self.validatorIdCodeMap);
+              isPassed = assertResults(tc,trtc,self.variables,self.validatorIdCodeMap,self.methodCodes);
             }
             if(!trtc.remarks) trtc.remarks = remarks;
             trtc.isExecuted = isExecuted;
@@ -503,8 +472,9 @@ vRunner.prototype.run = function(next){
       },cb);
     }
   ];
-  util.series(tasks,function(err){
+  util.series(tasks,function(err, data){
     if(err) self.emit('error',err);
+    if(data === 'VRUN_OVER') return;
     self.sendToServer(self.instanceURL,'OVER',function(err){
       if(err) {
         self.emit('warning',err);
