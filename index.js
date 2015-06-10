@@ -111,7 +111,7 @@ var createTestRun = function(instanceURL,filterData,next){
   filters.currentPage = 0;
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
-    body: { name : new Date(), projectId : true, filterData : filters } }, function(err,res,body){
+    body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
       if(err || body.error) next(['Error while creating test run : ',err||body]);
       else next(null,body.output);
   });
