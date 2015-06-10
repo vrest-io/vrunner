@@ -49,41 +49,35 @@ var getInstanceName = function(url){
   return String(instanceName);
 };
 
-var fetchSinglePage = function(url,page,pageSize,af,cb,next){
-  console.log('---> Fetching upto '+pageSize+' testcases at page '+(page+1)+' ...');
+var fetchSinglePage = function(url,page,pageSize,af,cb,next, vrunner){
+  vrunner.emit('log', 'Fetching page ' + (page+1) + ' (upto ' + pageSize + ' testcases) ...');
   request(url+'&pageSize='+pageSize+'&currentPage='+page, function(err,res,body){
-    if(err || body.error) af(['Error found while fetching test cases at page '+page+' :', body]);
+    if(err || body.error) next(['Error found while fetching test cases at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
-      af('You can not execute more than '+RUNNER_LIMIT+ ' test cases in one go.');
-    else af(null, body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next);
+      next('You can not execute more than '+RUNNER_LIMIT+ ' test cases in one go.');
+    else af(body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next, vrunner);
   });
 };
 
 
-var afterFetch = function(err,body,last,url,page,pageSize,cb,next){
-  if(err) next(err);
-  else {
-    util.recForEach({
-      ar : body,
-      ec : cb,
-      finishOnError : true,
-      cb : function(err){
-        if(err) next(err);
-        else if(last) next();
-        else fetchSinglePage(url,(page+1),pageSize,eachPage,cb,next);
-      }
-    });
-  }
+var afterFetch = function(body,last,url,page,pageSize,cb,next, vrunner){
+  util.recForEach({
+    ar : body,
+    ec : cb,
+    finishOnError : true,
+    cb : function(err){
+      if(err) next(err);
+      else if(last) next();
+      else fetchSinglePage(url,(page+1),pageSize,afterFetch,cb,next, vrunner);
+    }
+  });
 };
 
-var eachPage = afterFetch;
-
-var fetchAndServe = function(url, pageSize, cb, next){
-  fetchSinglePage(url,0,pageSize,afterFetch,cb,next);
+var fetchAndServe = function(url, pageSize, cb, next, vrunner){
+  fetchSinglePage(url,0,pageSize,afterFetch,cb,next, vrunner);
 };
 
 var hasRunPermission = function(instance,project,next){
-  console.log('---> Checking permission to execute test case in project ...');
   request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
@@ -93,9 +87,12 @@ var hasRunPermission = function(instance,project,next){
   });
 };
 
-var findHelpers = function(instanceURL,what,project,next){
-  console.log('---> finding '+what+'s ...');
-  request(instanceURL+'/g/'+what+'?&projectId='+project,
+var findHelpers = function(vrunner, what, next){
+  vrunner.emit('log', 'Finding '+what+'s ...');
+  var instanceURL = vrunner.instanceURL,
+    projectId = vrunner.projectId;
+
+  request(instanceURL+'/g/'+what+'?&projectId='+projectId,
     function(err,res,body){
       if(err || body.error) next(['Error while fetching '+what+'s :', err||body]);
       else {
@@ -106,7 +103,6 @@ var findHelpers = function(instanceURL,what,project,next){
 };
 
 var createTestRun = function(instanceURL,filterData,next){
-  console.log('---> Creating test run ...');
   var filters = util.cloneObject(filterData);
   filters.currentPage = 0;
   filters.pageSize = 100;
@@ -234,7 +230,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,m
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) {
-        console.log(remarks);
+        //console.log(remarks);
       } else if(remarks.length > 2000){
         remarks = remarks.substring(0, 1993) + '....';
       }
@@ -247,7 +243,6 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,m
 };
 
 var saveReport = function(error,url,report,next){
-  console.log('---> Saving test run execution report ...');
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -302,7 +297,7 @@ function vRunner(opts){
 vRunner.prototype = new events.EventEmitter;
 
 vRunner.prototype.sigIn = function(next){
-  console.log('---> Logging you in ...');
+  this.emit('log', 'Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
     if(err || body.error) next(err||body, 'VRUN_OVER');
     else next(null,body);
@@ -334,10 +329,11 @@ vRunner.prototype.run = function(next){
       self.sigIn(cb);
     },
     function(cb){
+      self.emit('log', 'Checking permission to execute test cases in project ...');
       hasRunPermission(self.instanceName,self.projectId,cb);
     },
     function(cb){
-      findHelpers(self.instanceURL,'authorization',self.projectId,function(err,auths){
+      findHelpers(self, 'authorization', function(err,auths){
         if(err) cb(err, 'VRUN_OVER');
         else {
           if(Array.isArray(auths)){
@@ -350,7 +346,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self.instanceURL,'variable',self.projectId,function(err,vars){
+      findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
           vars.forEach(function(vr){
@@ -361,7 +357,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self.instanceURL,'responsevalidator',self.projectId,function(err,vals){
+      findHelpers(self, 'responsevalidator', function(err,vals){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.validatorIdCodeMap = {};
@@ -388,6 +384,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
+      self.emit('log', 'Creating test run ...');
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
         if(err) cb(err, 'VRUN_OVER');
         else {
@@ -413,16 +410,13 @@ vRunner.prototype.run = function(next){
           report.total++;
           if(trtc.isExecuted){
             if(trtc.isPassed) {
-              //console.log(tc.method +' --> '+tc.url+ ' --> PASSED');
               report.passed++;
               self.emit('testcase',true,tc,trtc);
             } else {
-              //console.log(tc.method +' --> '+tc.url+ ' --> FAILED');
               report.failed++;
               self.emit('testcase',false,tc,trtc);
             }
           } else {
-            //console.log(tc.method +' --> '+tc.url+ ' --> NOT_EXECUTED');
             report.notExecuted++;
             self.emit('testcase',null,tc,trtc);
           }
@@ -469,7 +463,7 @@ vRunner.prototype.run = function(next){
           trtc.remarks = 'Test case was not runnable.';
           over();
         }
-      },cb);
+      },cb, self);
     }
   ];
   util.series(tasks,function(err, data){
@@ -480,6 +474,7 @@ vRunner.prototype.run = function(next){
         self.emit('warning',err);
         //console.log('Error occurred while saving execution results : ', err);
       }
+      self.emit('log', 'Saving test run execution report ...');
       saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
     });
   });
