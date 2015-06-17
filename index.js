@@ -54,8 +54,11 @@ var fetchSinglePage = function(url,page,pageSize,af,cb,next, vrunner){
   request(url+'&pageSize='+pageSize+'&currentPage='+page, function(err,res,body){
     if(err || body.error) next(['Error found while fetching test cases at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
-      next('You can not execute more than '+RUNNER_LIMIT+ ' test cases in one go.');
-    else af(body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next, vrunner);
+      next('More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.');
+    else {
+      if(typeof vrunner.totalRecords !== 'number') vrunner.totalRecords = body.total;
+      af(body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next, vrunner);
+    }
   });
 };
 
@@ -242,7 +245,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,m
   return isPassed;
 };
 
-var saveReport = function(error,url,report,next){
+var saveReport = function(error,url,report,next,stopped){
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -250,7 +253,7 @@ var saveReport = function(error,url,report,next){
       failed: report.failed,
       notExecuted: report.notExecuted
     },
-    remarks : error ? util.stringify(error) : 'All test cases executed successfully.'
+    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.stringify(error)) : 'All test cases executed successfully.'
   }}, function(err,response,body){
     if(error) next(error);
     else if(err || body.error) next(['Error while saving report : ', err||body]);
@@ -292,9 +295,33 @@ function vRunner(opts){
   this.instanceName = getInstanceName(this.url);
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
   this.pendingTrtc = [];
+  this.stopped = false;
+  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0;
+  var self = this;
+  process.on( 'SIGINT', function() {
+    self.emit('log',"\nPlease wait, Stopping test case execution ...");
+    self.stopped = true;
+  });
 };
 
 vRunner.prototype = new events.EventEmitter;
+
+vRunner.prototype.kill = function(next){
+  var self = this;
+  self.sendToServer(self.instanceURL,'OVER',function(err){
+    if(err) self.emit('warning',err);
+    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted);
+    self.sendToServer(self.instanceURL,ne,function(err){
+      if(err) self.emit('warning',err);
+      saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,
+        { total : self.totalRecords, passed : self.noPassed, failed : self.noFailed, notExecuted : ne + self.noNotExecuted },
+      function(err){
+        if(err) self.emit('warning',err);
+        process.exit();
+      }, true);
+    });
+  });
+};
 
 vRunner.prototype.sigIn = function(next){
   this.emit('log', 'Logging you in ...');
@@ -306,16 +333,27 @@ vRunner.prototype.sigIn = function(next){
 
 vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
   var self = this;
-  var sendNow = function(){
-    var toSend = { list : util.cloneObject(self.pendingTrtc) };
+  var sendNow = function(count){
+    var toSend = {};
+    if(count){
+      toSend.count = count;
+      toSend.testRunId = self.testRunId;
+      toSend.filterData = self.filters;
+    } else {
+      toSend.list = util.cloneObject(self.pendingTrtc);
+    }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
       if(err || body.error) next(err||body);
       else next(null);
     });
   };
-  if(trtc === 'OVER' && this.pendingTrtc.length) sendNow();
-  else {
+  if(trtc === 'OVER'){
+    if(this.pendingTrtc.length) sendNow();
+    else next(null);
+  } else if(trtc === 'STOPPED'){
+    sendNow();
+  } else {
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
     else next(null);
@@ -411,13 +449,16 @@ vRunner.prototype.run = function(next){
           if(trtc.isExecuted){
             if(trtc.isPassed) {
               report.passed++;
+              self.noPassed++;
               self.emit('testcase',true,tc,trtc);
             } else {
               report.failed++;
+              self.noFailed++;
               self.emit('testcase',false,tc,trtc);
             }
           } else {
             report.notExecuted++;
+            self.noNotExecuted++;
             self.emit('testcase',null,tc,trtc);
           }
           self.sendToServer(self.instanceURL,trtc,function(err){
@@ -425,7 +466,8 @@ vRunner.prototype.run = function(next){
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
             }
-            cb0();
+            if(self.stopped) self.kill();
+            else cb0();
           });
         };
         if(tc.runnable){
