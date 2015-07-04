@@ -357,7 +357,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'responsevalidator', function(err,vals){
+      findHelpers(self, 'responsevalidator', function(err, vals){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.validatorIdCodeMap = {};
