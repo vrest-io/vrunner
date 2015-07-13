@@ -28,9 +28,9 @@ var request = require('request').defaults({jar: true,json:true}),
     options = {
       credentials : {
       },
-      pageSize : 100,
-      methodCodes : {
+      varColMap : {
       },
+      pageSize : 100,
       authorizations : {
       },
       validatorIdCodeMap : {
@@ -142,7 +142,7 @@ var getAuthHeader = function(ath){
   } else if(authType === 'oauth1.0'){
     var params = util.extractParamters(tc.params);
     return function(tc) {
-      new OAuth1(authConfig, tc.method, util.completeURL(tc.url, params.query), params.body).getAuthHeader();
+      new OAuth1(authConfig, tc.method, util.completeURL(tc.url, params.query)).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
@@ -155,6 +155,7 @@ var fireRequest = function(tc,trtc,callback){
       //console.log(result);
     }
     trtc.executionTime = new Date().getTime() - trtc.executionTime;
+    if(result.runnerCase) trtc.runnerCase = result.runnerCase;
     callback(result);
   });
 };
@@ -214,7 +215,7 @@ var extractVarsFrom = function(tc, result, tcVar) {
   return;
 };
 
-var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,methodCodes){
+var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
   var isPassed = false, actualResults = runnerModel.result, headers = runnerModel.result.headers;
   var jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
@@ -229,7 +230,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap,m
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
             function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
-      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, methodCodes);
+      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) {
@@ -384,39 +385,41 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'variable', function(err,vars){
-        if(err) cb(err, 'VRUN_OVER');
-        else {
-          vars.forEach(function(vr){
-            if(!self.variables.hasOwnProperty(vr.key)) self.variables[vr.key] = vr.value;
-          });
-          cb();
-        }
-      });
-    },
-    function(cb){
       findHelpers(self, 'responsevalidator', function(err, vals){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.validatorIdCodeMap = {};
           vals.forEach(function(model){
             var func = eval(model.code);
-            try { (model.isUtil ? self.methodCodes : self.validatorIdCodeMap)[( model.isUtil ? model.name : model.id)] = eval(model.code); } catch(e){ console.log(e); };
+            try {
+              (model.isUtil ? util.methodCodes : self.validatorIdCodeMap)[( model.isUtil ? model.name : model.id)] = eval(model.code);
+            } catch(e){
+              console.log(e);
+            }
           });
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
           ZSV.setRemoteReference('http://json-schema.org/draft-04/schema#', sk.draft04ValidatorFile);
           var ifDraft03 = function(bv){ return (bv.$schema && bv.$schema.indexOf('draft-03') !== -1); };
-          self.methodCodes.validateJSONSchema = function(av,bv){
+          util.methodCodes.validateJSONSchema = function(av,bv){
             if(ifDraft03(bv)){
               var result = sk.draft03Validator(av,bv);
               bv.vrest_schemaErrors = result.errors || [];
               return result.valid;
             } else return ZSV.validate.call(ZSV,av,bv);
           };
-          self.methodCodes.lastSchemaErrors = function(av,bv){
+          util.methodCodes.lastSchemaErrors = function(av,bv){
             if(ifDraft03(av)){ return av.vrest_schemaErrors; } else return ZSV.getLastErrors.call(ZSV,av,bv);
           };
+          cb();
+        }
+      });
+    },
+    function(cb){
+      findHelpers(self, 'variable', function(err,vars){
+        if(err) cb(err, 'VRUN_OVER');
+        else {
+          self.variables = util.configureVarCol(vars, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
           cb();
         }
       });
@@ -494,7 +497,7 @@ vRunner.prototype.run = function(next){
               trtc.result = actualResults;
               extractVarsFrom(tc, actualResults, self.variables);
               trtc.variable = util.cloneObject(self.variables);
-              isPassed = assertResults(tc,trtc,self.variables,self.validatorIdCodeMap,self.methodCodes);
+              isPassed = assertResults(tc,trtc,self.variables,self.validatorIdCodeMap);
             }
             if(!trtc.remarks) trtc.remarks = remarks;
             trtc.isExecuted = isExecuted;
