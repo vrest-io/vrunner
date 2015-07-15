@@ -140,8 +140,8 @@ var getAuthHeader = function(ath){
   } else if(authType === 'raw'){
     return authConfig.authHeader || '';
   } else if(authType === 'oauth1.0'){
-    var params = util.extractParamters(tc.params);
     return function(tc) {
+      var params = util.extractParamters(tc.params);
       new OAuth1(authConfig, tc.method, util.completeURL(tc.url, params.query), params.body).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
