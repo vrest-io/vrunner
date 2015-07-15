@@ -318,6 +318,7 @@ vRunner.prototype.kill = function(next){
         { total : self.totalRecords, passed : self.noPassed, failed : self.noFailed, notExecuted : ne + self.noNotExecuted },
       function(err){
         if(err) self.emit('warning',err);
+        self.emit('log',"\nTest Run Stopped.");
         process.exit();
       }, true);
     });
@@ -469,7 +470,9 @@ vRunner.prototype.run = function(next){
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
             }
-            if(self.stopped) self.kill();
+            if(self.stopped){
+              self.kill();
+            } 
             else cb0();
           });
         };
