@@ -8,7 +8,7 @@
 
 'use strict';
 
-var request = require('request').defaults({jar: true,json:true}),
+var request = require('request').defaults({jar: true, json: true}),
     zSchemaValidator = require('z-schema'),
     events = require('events'),
     jsonSchemaFiles = require('./lib/schemaFiles'),
@@ -26,17 +26,12 @@ var request = require('request').defaults({jar: true,json:true}),
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     options = {
-      credentials : {
-      },
-      varColMap : {
-      },
+      credentials : {},
+      varColMap : {},
       pageSize : 100,
-      authorizations : {
-      },
-      validatorIdCodeMap : {
-      },
-      variables : {
-      }
+      authorizations : {},
+      validatorIdCodeMap : {},
+      variables : {}
     };
 
 var getInstanceName = function(url){
@@ -49,21 +44,21 @@ var getInstanceName = function(url){
   return String(instanceName);
 };
 
-var fetchSinglePage = function(url,page,pageSize,af,cb,next, vrunner){
+var fetchSinglePage = function(url, page, pageSize, af, cb, next, vrunner){
   vrunner.emit('log', 'Fetching page ' + (page+1) + ' (upto ' + pageSize + ' testcases) ...');
-  request(url+'&pageSize='+pageSize+'&currentPage='+page, function(err,res,body){
+  request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
     if(err || body.error) next(['Error found while fetching test cases at page '+page+' :', body]);
     else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
       next('More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.');
     else {
       if(typeof vrunner.totalRecords !== 'number') vrunner.totalRecords = body.total;
-      af(body.output, body.total < (pageSize*(page+1)),url,page,pageSize,cb,next, vrunner);
+      af(body.output, body.total < (pageSize*(page+1)), url, page, pageSize, cb, next, vrunner);
     }
   });
 };
 
 
-var afterFetch = function(body,last,url,page,pageSize,cb,next, vrunner){
+var afterFetch = function(body, last, url, page, pageSize, cb, next, vrunner){
   util.recForEach({
     ar : body,
     ec : cb,
@@ -77,10 +72,10 @@ var afterFetch = function(body,last,url,page,pageSize,cb,next, vrunner){
 };
 
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
-  fetchSinglePage(url,0,pageSize,afterFetch,cb,next, vrunner);
+  fetchSinglePage(url, 0, pageSize, afterFetch, cb, next, vrunner);
 };
 
-var hasRunPermission = function(instance,project,next){
+var hasRunPermission = function(instance, project, next){
   request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
@@ -105,7 +100,7 @@ var findHelpers = function(vrunner, what, next){
   });
 };
 
-var createTestRun = function(instanceURL,filterData,next){
+var createTestRun = function(instanceURL, filterData, next){
   var filters = util.cloneObject(filterData);
   filters.currentPage = 0;
   filters.pageSize = 100;
@@ -149,7 +144,7 @@ var getAuthHeader = function(ath){
   }
 };
 
-var fireRequest = function(tc,trtc,callback){
+var fireRequest = function(tc, trtc, callback){
   runner({ testcase : tc },function(result){
     if(!result || result.err) {
       //console.log(result);
@@ -215,7 +210,7 @@ var extractVarsFrom = function(tc, result, tcVar) {
   return;
 };
 
-var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
+var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMap){
   var isPassed = false, actualResults = runnerModel.result, headers = runnerModel.result.headers;
   var jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
@@ -246,7 +241,7 @@ var assertResults = function(toSendTC,runnerModel,variables,validatorIdCodeMap){
   return isPassed;
 };
 
-var saveReport = function(error,url,report,next,stopped){
+var saveReport = function(error, url, report, next, stopped){
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
