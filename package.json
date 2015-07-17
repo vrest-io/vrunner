@@ -1,6 +1,6 @@
 {
   "name": "vrunner",
-  "description": "Runs vREST test cases.",
+  "description": "Runs vREST test cases",
   "version": "0.0.1",
   "homepage": "http://vrest.io",
   "author": {
@@ -9,15 +9,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://rameshoptimizory@bitbucket.org/rameshoptimizory/vrunner.git"
+    "url": "git@github.com:vrest-io/vrunner.git"
   },
   "bugs": {
-    "url": "https://rameshoptimizory@bitbucket.org/rameshoptimizory/vrunner"
+    "url": "https://github.com/vrest-io/vrunner/issues"
   },
   "licenses": [
     {
       "type": "MIT",
-      "url": "http://vrest.io/blob/master/LICENSE-MIT"
+      "url": "https://github.com/vrest-io/vrunner/blob/master/LICENSE-MIT"
     }
   ],
   "engines": {
