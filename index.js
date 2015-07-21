@@ -465,7 +465,9 @@ vRunner.prototype.run = function(next){
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
             }
-            if(self.stopped) self.kill();
+            if(self.stopped){
+              self.kill();
+            } 
             else cb0();
           });
         };
