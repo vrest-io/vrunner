@@ -17,7 +17,7 @@ var request = require('request').defaults({jar: true, json: true}),
     OAuth1 = require('./lib/oauth-1_0'),
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
-    V_BASE_URL = 'http://vrest.io/',
+    V_BASE_URL = 'http://localhost:3000/',
     RUNNER_LIMIT = 5000,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -25,8 +25,10 @@ var request = require('request').defaults({jar: true, json: true}),
     END_VAR_EXPR = '}}',
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
+    pages = [false],
     options = {
       credentials : {},
+      logger : 'console',
       varColMap : {},
       pageSize : 100,
       authorizations : {},
@@ -44,35 +46,56 @@ var getInstanceName = function(url){
   return String(instanceName);
 };
 
-var fetchSinglePage = function(url, page, pageSize, af, cb, next, vrunner){
-  vrunner.emit('log', 'Fetching page ' + (page+1) + ' (upto ' + pageSize + ' testcases) ...');
-  request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-    if(err || body.error) next(['Error found while fetching test cases at page '+page+' :', body]);
-    else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
-      next('More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.');
-    else {
-      if(typeof vrunner.totalRecords !== 'number') vrunner.totalRecords = body.total;
-      af(body.output, body.total < (pageSize*(page+1)), url, page, pageSize, cb, next, vrunner);
-    }
-  });
+var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
+  if(page===vrunner.totalPages) next();
+  else if(Array.isArray(pages[page])) {
+    afterFetch(pages[page], cb, function(err){
+      if(err) next(err);
+      else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
+    });
+    if(pages[page+1] === false) fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
+  } else if(typeof pages[page] === 'string') next(pages[page]);
+  else if(pages[page] === false) {
+    pages[page] = true;
+    request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
+      if(err || body.error) pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
+      else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
+        pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
+      else if(!page){
+        oneTimeCache(vrunner,body.output,body.total);
+        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+        vrunner.on('new_page', function(npage){
+          if(vrunner.pageLoading){
+            fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
+            vrunner.pageLoading = false;
+          }
+        });
+      } else {
+        pages[page] = body.output;
+        vrunner.emit('new_page', page);
+      }
+    });
+  } else {
+    vrunner.pageLoading = true;
+    vrunner.emit('log', 'Fetching page ' + (page+1) + ' (upto ' + pageSize + ' testcases) ...');
+  }
 };
 
+var afterFetch = function(body, cb, next){
+  util.recForEach({ ar : body, ec : cb, finishOnError : true, cb : next });
+};
 
-var afterFetch = function(body, last, url, page, pageSize, cb, next, vrunner){
-  util.recForEach({
-    ar : body,
-    ec : cb,
-    finishOnError : true,
-    cb : function(err){
-      if(err) next(err);
-      else if(last) next();
-      else fetchSinglePage(url,(page+1),pageSize,afterFetch,cb,next, vrunner);
-    }
-  });
+var oneTimeCache = function(vrunner,records,total){
+  vrunner.totalRecords = total;
+  vrunner.totalPages = Math.ceil(total/vrunner.pageSize);
+  pages[0] = records;
+  for(var z=1;z<vrunner.totalPages;z++){
+    pages[z] = false;
+  }
 };
 
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
-  fetchSinglePage(url, 0, pageSize, afterFetch, cb, next, vrunner);
+  fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
 };
 
 var hasRunPermission = function(instance, project, next){
@@ -241,31 +264,8 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
   return isPassed;
 };
 
-var saveReport = function(error, url, report, next, stopped){
-  request({ method : 'PATCH', url : url, body : {
-    statistics: {
-      total : report.total,
-      passed : report.passed,
-      failed: report.failed,
-      notExecuted: report.notExecuted
-    },
-    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.stringify(error)) : 'All test cases executed successfully.'
-  }}, function(err,response,body){
-    if(error) next(error);
-    else if(err || body.error) next(['Error while saving report : ', err||body]);
-    else next(null, body.output.statistics, body.output.remarks);
-  });
-};
-
 exports.version = '0.0.1';
 exports.util = util;
-exports.setOptions = function(opts){
-  if(util.isObject(opts)){
-    for(var ok in opts){
-      options[ok] = opts[ok];
-    };
-  }
-};
 
 function vRunner(opts){
   var dk, error, queryObject;
@@ -277,6 +277,7 @@ function vRunner(opts){
       this[dk] =  opts[dk];
     }
   }
+  this.logger = require('./logger/'+this.logger)({ runner : this });
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
   if(typeof this.url !== 'string' || !this.url) throw new Error('vRunner : URL to fetch test cases not found.');
@@ -302,6 +303,23 @@ function vRunner(opts){
 
 vRunner.prototype = new events.EventEmitter;
 
+vRunner.prototype.saveReport = function(error, url, report, next, stopped){
+  var self = this;
+  request({ method : 'PATCH', url : url, body : {
+    statistics: {
+      total : report.total,
+      passed : report.passed,
+      failed: report.failed,
+      notExecuted: report.notExecuted
+    },
+    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.stringify(error)) : 'All test cases executed successfully.'
+  }}, function(err,response,body){
+    if(error) self.emit('end',error);
+    else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
+    else self.emit('end',null, body.output.statistics, body.output.remarks);
+  });
+};
+
 vRunner.prototype.kill = function(next){
   var self = this;
   self.sendToServer(self.instanceURL,'OVER',function(err){
@@ -309,7 +327,7 @@ vRunner.prototype.kill = function(next){
     var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted);
     self.sendToServer(self.instanceURL,ne,function(err){
       if(err) self.emit('warning',err);
-      saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,
+      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,
         { total : self.totalRecords, passed : self.noPassed, failed : self.noFailed, notExecuted : ne + self.noNotExecuted },
       function(err){
         if(err) self.emit('warning',err);
@@ -341,7 +359,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err || body.error) next(err||body);
+      if(err || (body && body.error) || !body) next(err||body||'Connection could not be established to save the execution results.');
       else next(null);
     });
   };
@@ -467,7 +485,7 @@ vRunner.prototype.run = function(next){
             }
             if(self.stopped){
               self.kill();
-            } 
+            }
             else cb0();
           });
         };
@@ -518,7 +536,7 @@ vRunner.prototype.run = function(next){
         //console.log('Error occurred while saving execution results : ', err);
       }
       self.emit('log', 'Saving test run execution report ...');
-      saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
+      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
     });
   });
 };
