@@ -15,6 +15,7 @@ var request = require('request').defaults({jar: true, json: true}),
     util = require('./lib/util'),
     runner = require('./lib/testRunner'),
     OAuth1 = require('./lib/oauth-1_0'),
+    loggers = ['console','json','xunit'],
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
     V_BASE_URL = 'http://localhost:3000/',
@@ -104,7 +105,7 @@ var hasRunPermission = function(instance, project, next){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next();
+    else next(null,body.output.project);
   });
 };
 
@@ -277,6 +278,12 @@ function vRunner(opts){
       this[dk] =  opts[dk];
     }
   }
+  if(loggers.indexOf(this.logger) === -1)  throw new Error('vRunner : Please input a valid logger.');
+  if(this.logger !== 'console' && !this.filePath) {
+    this.filePath = process.env.PWD+'/vrest_logs/logs';
+    if(this.logger === 'json') this.filePath += '.json';
+    else if(this.logger === 'xunit') this.filePath += '.xml';
+  }
   this.logger = require('./logger/'+this.logger)({ runner : this });
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
@@ -383,7 +390,13 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,cb);
+      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey){
+        if(err) cb(err);
+        else {
+          if(projectKey) self.projectKey = projectKey;
+          cb();
+        }
+      });
     },
     function(cb){
       findHelpers(self, 'authorization', function(err,auths){
