@@ -348,7 +348,7 @@ vRunner.prototype.kill = function(next){
 vRunner.prototype.sigIn = function(next){
   this.emit('log', 'Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
-    if(err || body.error) next(err||body, 'VRUN_OVER');
+    if(err || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
     else next(null,body);
   });
 };

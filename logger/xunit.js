@@ -20,7 +20,7 @@ var getDescUrl = function(runner,tr,tc){
 
 module.exports = function(args){
   args.logger = function(log){
-    //mainJson.logs.push(log);
+    console.log(log);
   };
   args.testcaseLogger = function(log,tc,trtc){
     var data = {
@@ -45,10 +45,10 @@ module.exports = function(args){
     mainJson.testsuite.testcase.push(data);
   };
   args.errorLogger = function(log){
-    //mainJson.errors.push(log);
+    console.log(log);
   };
   args.warningLogger = function(log){
-    //mainJson.warnings.push(log);
+    console.log(log);
   };
   args.remarksLogger = function(log){
     //mainJson.remarks = log;
