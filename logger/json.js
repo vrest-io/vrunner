@@ -5,16 +5,16 @@ var common = require('./common'), util = require('./../lib/util'),
 
 module.exports = function(args){
   args.logger = function(log){
-    mainJson.logs.push(log);
+    console.log(log);
   };
   args.testcaseLogger = function(log){
     mainJson.testcases.push(log);
   };
   args.errorLogger = function(log){
-    mainJson.errors.push(log);
+    console.log(log);
   };
   args.warningLogger = function(log){
-    mainJson.warnings.push(log);
+    console.log(log);
   };
   args.remarksLogger = function(log){
     mainJson.remarks = log;
