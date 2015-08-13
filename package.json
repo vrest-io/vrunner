@@ -1,7 +1,7 @@
 {
   "name": "vrunner",
   "description": "Runs vREST test cases",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "homepage": "http://vrest.io",
   "author": {
     "name": "vREST Team",
@@ -34,8 +34,8 @@
     "z-schema": "3.10.2",
     "chalk": "1.0.0",
     "crypto-js": "3.1.4",
-    "mkdirp" : "0.5.1",
-    "xml2js" : "0.4.10",
+    "mkdirp": "0.5.1",
+    "xml2js": "0.4.10",
     "btoa": "1.1.2"
   },
   "devDependencies": {
