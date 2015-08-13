@@ -3,9 +3,9 @@
 > Runs vREST test cases on terminal.
 
 #### Usage: 
-	vrunner --email=\<vrest_email\> --password=\<vrest_password\> 
-	        --url="\<vrest_testcase_list_url\>"
-  	        [--filepath="\<path_of_log_file_for_logger_other_than_console\>"]
+	vrunner --email=<vrest_email> --password=<vrest_password> 
+	        --url="<vrest_testcase_list_url>"
+  	        [--filepath="<path_of_log_file_for_logger_other_than_console>"]
   	        [--logger=<one_of_available_loggers>]
 
 #### Options:
