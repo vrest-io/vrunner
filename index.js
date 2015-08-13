@@ -324,6 +324,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
     if(error) self.emit('end',error);
     else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
     else self.emit('end',null, body.output.statistics, body.output.remarks);
+    process.exit(body.output.statistics.failed ? 1 : 0);
   });
 };
 
@@ -339,7 +340,7 @@ vRunner.prototype.kill = function(next){
       function(err){
         if(err) self.emit('warning',err);
         self.emit('log',"\nTest Run Stopped.");
-        process.exit();
+        process.exit(1);
       }, true);
     });
   });
