@@ -87,6 +87,7 @@ var afterFetch = function(body, cb, next){
 };
 
 var oneTimeCache = function(vrunner,records,total){
+  vrunner.emit("log", "Executing test cases ... (Please wait, it may take some time.)");
   vrunner.totalRecords = total;
   vrunner.totalPages = Math.ceil(total/vrunner.pageSize);
   pages[0] = records;
