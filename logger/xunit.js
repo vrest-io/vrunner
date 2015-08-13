@@ -35,12 +35,12 @@ module.exports = function(args){
         data.$.message = 'PASSED';
       } else {
         data.$.message = 'FAILED';
-        data.failure = '<pre>API Endpoint: ' + tc.url+ (tc.summary ? ('\nSummary: ' +tc.summary) : '')+'\nDetailed Info : '+
-              getDescUrl(args.runner,trtc.testRunId,tc.id)+(trtc.remarks ? ('\nRemarks : '+trtc.remarks) : '')+'</pre>';
+        data.failure = 'API Endpoint: ' + tc.url+ (tc.summary ? ('\nSummary: ' +tc.summary) : '')+'\nDetailed Info : '+
+              getDescUrl(args.runner,trtc.testRunId,tc.id)+(trtc.remarks ? ('\nRemarks : '+trtc.remarks) : '');
       }
     } else {
       data.$.message = 'NOT_EXECUTED';
-      if(trtc.remarks) data.error = '<pre>'+trtc.remarks+'</pre>';
+      if(trtc.remarks) data.error = trtc.remarks;
     }
     mainJson.testsuite.testcase.push(data);
   };
