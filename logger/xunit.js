@@ -2,7 +2,7 @@
 'use strict';
 
 var common = require('./common'), util = require('./../lib/util'), xml2js = require('xml2js'),
-    builder = new xml2js.Builder({cdata : true, renderOpts : { 'pretty': true, 'indent': ' ' }}), fs = require('fs'),
+    builder = new xml2js.Builder({cdata : true}), fs = require('fs'),
     mainJson = {
       testsuite : {
         '$': {
@@ -56,10 +56,10 @@ module.exports = function(args){
   args.reportsLogger = function(log){
     mainJson.testsuite.$.tests = log.total;
     mainJson.testsuite.$.failures = log.failed;
-    mainJson.testsuite.$.skippeds = log.notExecuted;
+    mainJson.testsuite.$.skipped = log.notExecuted;
   };
   args.runner.on('done',function(){
-    util.writeToFile(args.runner.filePath,builder.buildObject(mainJson));
+    util.writeToFile(args.runner.filePath, builder.buildObject(mainJson));
   });
   common(args);
 };

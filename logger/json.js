@@ -23,7 +23,7 @@ module.exports = function(args){
     mainJson.report = log;
   };
   args.runner.on('done',function(){
-    util.writeToFile(args.runner.filePath,mainJson);
+    util.writeToFile(args.runner.filePath, util.stringify(mainJson, ' '));
   });
   common(args);
 };
