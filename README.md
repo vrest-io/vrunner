@@ -11,17 +11,19 @@
 #### Options:
         -E, --email    : Email ID through which you have registered on vREST
         -P, --password : Password of your vREST account
-        -U, --url      : Provide the test case list URL here. You can find the test case list URL 
-                         by going to your vREST instance and select Test Cases tab. Now click on 
-                         button "Copy Current Test Case List URL" available in Left hand side, 
-                         below the "Filters section". Provide the copied URL in this option.
-        -L, --logger   : Your desired logging of the vRUNNER execution process and result.
-                         This can be either `console` or `json` or `xunit`.
+        -U, --url      : Provide the test case list URL here. You can find the test 
+                         case list URL by going to your vREST instance and select Test
+                         Cases tab. Now click on button "Copy Current Test Case List 
+                         URL" available in Left hand side, below the "Filters section". 
+                         Provide the copied URL in this option.
+        -L, --logger   : Your desired logging of the vRUNNER execution process and 
+                         result. This can be either `console` or `json` or `xunit`.
                          By default `console` logger is used.
         -F, --filepath : Valid if other than `console` logger is selected.
-                         Absolute path of the log file, into which execution process and result 
-                         logs will be dumped. If path/file is not present, tool will try to setup 
-                         that path, and create file automatically.
-                         Please note that if file already exists, that will be overwritten.
-                         By default it will be the `vrest/logs.[json|xml]` in current directory.
+                         Absolute path of the log file, into which execution process 
+                         and result logs will be dumped. If path/file is not present, 
+                         tool will try to setup that path, and create file automatically.
+                         Please note that if file already exists, that will be 
+                         overwritten. By default it will be the `vrest/logs.[json|xml]` 
+                         in current directory.
         -H, --help     : To see this help.
