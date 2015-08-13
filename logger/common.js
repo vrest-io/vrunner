@@ -23,8 +23,9 @@ var chalk = require('chalk'), index = 1, rpad = function(str, totalSize, padChar
   });
   if(!dontExit) done(runner);
   runner.emit('over', err);
-}, done = function(runner){
+}, done = function(runner, report){
   runner.emit('done');
+  process.exit(report.failed ? 1 : 0);
 }, getMethodName = function(method){
   if(method === "GET") return callChalk(['blue','bold'],method) + '    ';
   else if(method === "POST") return callChalk('bold',method) + '   ';

@@ -324,7 +324,6 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
     if(error) self.emit('end',error);
     else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
     else self.emit('end',null, body.output.statistics, body.output.remarks);
-    process.exit(body.output.statistics.failed ? 1 : 0);
   });
 };
 
