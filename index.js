@@ -248,7 +248,8 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
     toSendTC.expectedResults.content =
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
-            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
+            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); },
+            { spcl : (config.meta.startVarExpr + '*' + config.meta.endVarExpr) }), null, true);
       isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
