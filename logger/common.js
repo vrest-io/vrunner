@@ -1,6 +1,6 @@
 'use strict';
 
-var chalk = require('chalk'), index = 1, rpad = function(str, totalSize, padChar){
+var chalk = require('chalk'), util = require('./../lib/util'), index = 1, rpad = function(str, totalSize, padChar){
   if(!padChar) padChar = ' ';
   if(str.length >= totalSize) return str;
   else {
@@ -21,11 +21,11 @@ var chalk = require('chalk'), index = 1, rpad = function(str, totalSize, padChar
   err.forEach(function(error){
     errorLogger(error);
   });
-  if(!dontExit) done(runner);
-  runner.emit('over', err);
-}, done = function(runner, report){
-  runner.emit('done');
-  process.exit((!report || report.failed) ? 1 : 0);
+  if(dontExit) runner.emit('over', err);
+  else done(runner, util.stringify(err));
+}, done = function(runner,err){
+  runner.emit('done',err);
+  if(runner.exitOnDone) process.exit(err ? 1 : 0);
 }, getMethodName = function(method){
   if(method === "GET") return callChalk(['blue','bold'],method) + '    ';
   else if(method === "POST") return callChalk('bold',method) + '   ';
@@ -58,7 +58,7 @@ module.exports = function(args){
       if(report.failed) over(args.errorLogger,Runner, 'Some of the test cases have failed.');
       else {
         args.logger('EXECUTION OF ALL TEST CASES SUCCESSFULLY COMPLETED.');
-        done(Runner, report);
+        done(Runner);
       }
     }
   });
