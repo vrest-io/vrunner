@@ -25,7 +25,7 @@ var chalk = require('chalk'), index = 1, rpad = function(str, totalSize, padChar
   runner.emit('over', err);
 }, done = function(runner, report){
   runner.emit('done');
-  process.exit(report.failed ? 1 : 0);
+  process.exit((!report || report.failed) ? 1 : 0);
 }, getMethodName = function(method){
   if(method === "GET") return callChalk(['blue','bold'],method) + '    ';
   else if(method === "POST") return callChalk('bold',method) + '   ';
@@ -58,7 +58,7 @@ module.exports = function(args){
       if(report.failed) over(args.errorLogger,Runner, 'Some of the test cases have failed.');
       else {
         args.logger('EXECUTION OF ALL TEST CASES SUCCESSFULLY COMPLETED.');
-        done(Runner);
+        done(Runner, report);
       }
     }
   });
