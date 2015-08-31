@@ -25,8 +25,8 @@ module.exports = function(args){
   args.testcaseLogger = function(log,tc,trtc){
     var data = {
       '$' : {
-        classname : tc.method + ' ' + tc.url,
-        name : tc.summary || '',
+        name : ' ' + tc.method + ' ' + tc.url,
+        classname : tc.summary || 'No Summary',
         time : String(trtc.executionTime/1000)
       }
     };
