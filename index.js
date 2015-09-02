@@ -31,6 +31,7 @@ var request = require('request').defaults({jar: true, json: true}),
       credentials : {},
       logger : 'console',
       varColMap : {},
+      exitOnDone : true,
       pageSize : 100,
       authorizations : {},
       validatorIdCodeMap : {},
@@ -213,24 +214,29 @@ var getActualResults = function(response) {
 
 var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
-    switch(result.resultType) {
-      case 'json' :
-        var jsonData = util.getJsonOrString(result.content);
-        if(typeof(jsonData) != 'object') return;
-        tc.tcVariables.forEach(function(vr){
+    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR };
+    tc.tcVariables.forEach(function(vr){
+      if(vr.name && vr.path && util.isValidPathVar({ meta : opts },vr.path)){
+        if(vr.path.indexOf(opts.startVarExpr) === 0 && vr.path.indexOf(opts.endVarExpr) !== -1){
+          var resMethod = util.getMethodName(vr.path, opts);
+          if(resMethod){
+            var cd = resMethod[0];
+            if(cd) tcVar[vr.name] = cd(result.content, { $ : $ });
+          }
+        } else if(result.resultType === 'json') {
+          var jsonData = util.getJsonOrString(result.content);
+          if(typeof(jsonData) != 'object') return;
           try {
-            tcVar[vr.name] = JSONPath(util.getJsonOrString(result.content), vr.path);
+            tcVar[vr.name] = JSONPath(jsonData, vr.path);
           } catch(er) {
             return;
           }
           if(Array.isArray(tcVar[vr.name]) && tcVar[vr.name].length === 1)
             tcVar[vr.name] = tcVar[vr.name][0]; // TODO : how it was working earlier? jsonpath return array.
           if(typeof tcVar[vr.name] === 'object') tcVar[vr.name] = JSON.stringify(tcVar[vr.name]);
-        });
-        break;
-      default :
-        break;
-    }
+        }
+      }
+    });
   }
   return;
 };
@@ -249,7 +255,8 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
     toSendTC.expectedResults.content =
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
-            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); }), null, true);
+            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); },
+            { spcl : (START_VAR_EXPR + '*' + END_VAR_EXPR) }), null, true);
       isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
