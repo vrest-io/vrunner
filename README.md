@@ -21,7 +21,8 @@
                          case list URL by going to your vREST instance and select Test
                          Cases tab. Now click on button "Copy Current Test Case List 
                          URL" available in Left hand side, below the "Filters section". 
-                         Provide the copied URL in this option.
+                         Provide the copied URL in this option. Ensure that you enclose
+                         URL in double quotes.
         -L, --logger   : Your desired logging of the vRUNNER execution process and 
                          result. This can be either `console` or `json` or `xunit`.
                          By default `console` logger is used.

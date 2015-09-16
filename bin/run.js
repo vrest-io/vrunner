@@ -52,7 +52,8 @@ if(showHelp){
   console.log('    -P, --password : Password of your vREST account');
   console.log('    -U, --url      : Provide the test case list URL here. You can find the test case list URL by going to your vREST');
   console.log('                     instance and select Test Cases tab. Now click on button "Copy Current Test Case List URL" available');
-  console.log('                     in Left hand side, below the "Filters section". Provide the copied URL in this option.');
+  console.log('                     in Left hand side, below the "Filters section". Provide the copied URL in this option. Ensure that');
+  console.log('                     you enclose the URL in double quotes.');
   console.log('    -L, --logger   : Your desired logging of the vRUNNER execution process and result.');
   console.log('                     This can be either `console` or `json` or `xunit`.');
   console.log('                     By default `console` logger is used.');
