@@ -255,7 +255,6 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
     toSendTC.expectedResults.content =
       util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
             util.getJsonOrString(toSendTRTC.actualResults.content),
-            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); },
             { spcl : (START_VAR_EXPR + '*' + END_VAR_EXPR) }), null, true);
       isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
