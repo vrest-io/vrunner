@@ -143,12 +143,6 @@ var getBasicAuthHeader = function(ath){
   return 'Basic ' + btoa(token);
 };
 
-var completeURL = function(tc) {
-  if(!tc || !tc.params || !tc.params.length) return tc;
-  tc.url = util.completeURL(tc.url, tc.params);
-  return tc;
-};
-
 var getOAuthTwoHeader = function(ath){
   var authConfig = ath.authConfig || {};
   return (authConfig.accessTokenType || 'OAuth') + ' ' + authConfig.accessToken;
@@ -539,13 +533,12 @@ vRunner.prototype.run = function(next){
         };
         if(tc.runnable){
           tc = util.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
-          console.log(tc);
+          tc.url = util.completeURL(tc.url, tc.params);
           if(tc.authorizationId){
             if(typeof self.authorizations[tc.authorizationId] === 'function'){
               tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
             } else tc.authorizationHeader = self.authorizations[tc.authorizationId];
           }
-          tc = completeURL(tc);
           trtc.executionTime = new Date().getTime();
           fireRequest(tc,trtc,function(result){
             var isPassed = false, remarks = '', isExecuted = false;
