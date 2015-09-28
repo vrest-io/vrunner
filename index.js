@@ -539,6 +539,7 @@ vRunner.prototype.run = function(next){
         };
         if(tc.runnable){
           tc = util.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
+          console.log(tc);
           if(tc.authorizationId){
             if(typeof self.authorizations[tc.authorizationId] === 'function'){
               tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
