@@ -14,6 +14,7 @@ var request = require('request').defaults({jar: true, json: true}),
     jsonSchemaFiles = require('./lib/schemaFiles'),
     util = require('./lib/util'),
     runner = require('./lib/testRunner'),
+    jquery = require('jquery'),
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit'],
     JSONPath = require('./lib/jsonpath'),
@@ -214,7 +215,7 @@ var getActualResults = function(response) {
 
 var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
-    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:$},''] };
+    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:jquery},''] };
     tc.tcVariables.forEach(function(vr){
       if(vr.name && vr.path && util.isValidPathVar({ meta : opts },vr.path)){
         if(vr.path.indexOf(opts.startVarExpr) === 0 && vr.path.indexOf(opts.endVarExpr) !== -1){
@@ -239,8 +240,8 @@ var extractVarsFrom = function(tc, result, tcVar) {
 };
 
 var setFinalExpContent = function(er,ar,curVars){
-  var toSet = false;
-  if(util.isWithVars(er.content, config.meta)){
+  var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:jquery},''] };
+  if(util.isWithVars(er.content, opts)){
     if(er.resultType === 'json'){
       toSet = true;
       var spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr, isSpcl = (er.content.indexOf('"'+spcl+'"') !== -1),
@@ -278,13 +279,13 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
   var isPassed = false, toSendTC, actualResults = runnerModel.result,
       headers = runnerModel.result.headers, curVars = variables;
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
-  var toSendTRTC = { headers : {} }, jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
+  var toSendTRTC = { headers : {} }, jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
   toSendTRTC.actualResults = actualResults;
   var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
-  if(typeof validatorIdCodeMap[tc.responseValidatorId] === 'function') {
+  if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
     if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
-    isPassed = validatorIdCodeMap[tc.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
+    isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
@@ -301,8 +302,8 @@ exports.version = '0.0.1';
 exports.util = util;
 
 function vRunner(opts){
-  if(opts.vRestBaseUrl) V_BASE_URL = opts.vRestBaseUrl;
-  delete opts.vRestBaseUrl;
+  if(opts.vRESTBaseUrl) V_BASE_URL = opts.vRESTBaseUrl;
+  delete opts.vRESTBaseUrl;
   var dk, error, queryObject;
   for(dk in options){
     this[dk] = options[dk];

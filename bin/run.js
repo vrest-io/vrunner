@@ -34,7 +34,7 @@ opts.forEach(function(arg){
       options.filePath = value;
       break;
     case '--vrestbaseurl':
-      options.vRestBaseUrl = value;
+      options.vRESTBaseUrl = value;
       break;
     case '-H':
     case '--help':
