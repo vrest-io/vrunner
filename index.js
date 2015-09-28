@@ -214,26 +214,23 @@ var getActualResults = function(response) {
 
 var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
-    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR };
+    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:$},''] };
     tc.tcVariables.forEach(function(vr){
       if(vr.name && vr.path && util.isValidPathVar({ meta : opts },vr.path)){
         if(vr.path.indexOf(opts.startVarExpr) === 0 && vr.path.indexOf(opts.endVarExpr) !== -1){
-          var resMethod = util.getMethodName(vr.path, opts);
-          if(resMethod){
-            var cd = resMethod[0];
-            if(cd) tcVar[vr.name] = cd(result.content, { $ : $ });
-          }
+          opts.prefs[1] = result.content;
+          opts.varkey = vr.name;
+          util.funcVarReplace([vr.path], opts, tcVar);
         } else if(result.resultType === 'json') {
-          var jsonData = util.getJsonOrString(result.content);
+          var jsonData = util.getJsonOrString(result.content), tp;
           if(typeof(jsonData) != 'object') return;
-          try {
-            tcVar[vr.name] = JSONPath(jsonData, vr.path);
-          } catch(er) {
-            return;
+          tcVar[vr.name] = JSONPath(jsonData, vr.path);
+          if(tcVar[vr.name] === 'TC_VAR_NOT_RESOLVED') {
+            tp = util.searchAndReplaceString(vr.path, tcVar, opts);
+            if(tp !== vr.path) tcVar[vr.name] = JSONPath(jsonData, tp);
           }
           if(Array.isArray(tcVar[vr.name]) && tcVar[vr.name].length === 1)
             tcVar[vr.name] = tcVar[vr.name][0]; // TODO : how it was working earlier? jsonpath return array.
-          if(typeof tcVar[vr.name] === 'object') tcVar[vr.name] = JSON.stringify(tcVar[vr.name]);
         }
       }
     });
@@ -241,30 +238,57 @@ var extractVarsFrom = function(tc, result, tcVar) {
   return;
 };
 
+var setFinalExpContent = function(er,ar,curVars){
+  var toSet = false;
+  if(util.isWithVars(er.content, config.meta)){
+    if(er.resultType === 'json'){
+      toSet = true;
+      var spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr, isSpcl = (er.content.indexOf('"'+spcl+'"') !== -1),
+        exCont = util.getJsonOrString(er.content);
+      if(typeof exCont === 'object'){
+        util.walkInto(function(valn, key, root){
+          if(typeof root === 'object' && root && root.hasOwnProperty(key)){
+            var val = root[key], tmpKy = null;
+            if(util.isWithVars(key, config.meta) && key !== spcl){
+              tmpKy = util.searchAndReplaceString(key, curVars, config.meta);
+              if(tmpKy !== key){
+                val = root[tmpKy] = root[key];
+                delete root[key];
+              }
+            }
+            if(typeof val === 'string' && val && val !== spcl){
+              if(util.isWithVars(val, config.meta)){
+                var newValue = curVars[val.substring(config.meta.startVarExpr.length, val.length - config.meta.endVarExpr.length)];
+                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, config.meta);
+              }
+            }
+          }
+        }, null, exCont);
+        if(isSpcl) exCont = util.mergeObjects(exCont, util.getJsonOrString(ar.content), { spcl : spcl });
+        er.content = util.stringify(exCont);
+      }
+    } else {
+      er.content = util.searchAndReplaceString(er.content, curVars, config.meta);
+    }
+  }
+  return toSet;
+};
+
 var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMap){
-  var isPassed = false, actualResults = runnerModel.result, headers = runnerModel.result.headers;
-  var jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
+  var isPassed = false, toSendTC, actualResults = runnerModel.result,
+      headers = runnerModel.result.headers, curVars = variables;
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
-  toSendTC.expectedResults.content =
-    util.searchAndReplaceString(toSendTC.expectedResults.content, util.cloneObject(variables),
-        { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
-  var toSendTRTC = { headers : {} }, tcValId = String(toSendTC.responseValidatorId);
+  var toSendTRTC = { headers : {} }, jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTRTC.actualResults = actualResults;
+  var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
-  if(typeof validatorIdCodeMap[tcValId] === 'function') {
-    toSendTC.expectedResults.content =
-      util.stringify(util.mergeObjects(util.getJsonOrString(toSendTC.expectedResults.content),
-            util.getJsonOrString(toSendTRTC.actualResults.content),
-            function(val){ return val === (START_VAR_EXPR + '*' + END_VAR_EXPR); },
-            { spcl : (START_VAR_EXPR + '*' + END_VAR_EXPR) }), null, true);
-      isPassed = validatorIdCodeMap[tcValId](toSendTC, toSendTRTC, util.methodCodes);
+  if(typeof validatorIdCodeMap[tc.responseValidatorId] === 'function') {
+    if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+    isPassed = validatorIdCodeMap[tc.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
-      if(remarks.length > 3 && remarks.length < 2000) {
-        //console.log(remarks);
-      } else if(remarks.length > 2000){
-        remarks = remarks.substring(0, 1993) + '....';
-      }
+      if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
+      else if(remarks.length > 2000) remarks = remarks.substring(0, 1993) + '....';
       runnerModel.remarks = remarks;
     }
   } else {
