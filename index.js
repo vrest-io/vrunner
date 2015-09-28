@@ -18,7 +18,7 @@ var request = require('request').defaults({jar: true, json: true}),
     loggers = ['console','json','xunit'],
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
-    V_BASE_URL = 'http://vrest.io/',
+    V_BASE_URL = 'https://vrest.io/',
     RUNNER_LIMIT = 5000,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -301,6 +301,8 @@ exports.version = '0.0.1';
 exports.util = util;
 
 function vRunner(opts){
+  if(opts.vRestBaseUrl) V_BASE_URL = opts.vRestBaseUrl;
+  delete opts.vRestBaseUrl;
   var dk, error, queryObject;
   for(dk in options){
     this[dk] = options[dk];

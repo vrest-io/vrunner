@@ -33,6 +33,9 @@ opts.forEach(function(arg){
     case '--filepath':
       options.filePath = value;
       break;
+    case '--vrestbaseurl':
+      options.vRestBaseUrl = value;
+      break;
     case '-H':
     case '--help':
       showHelp = true;
