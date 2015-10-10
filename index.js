@@ -238,23 +238,23 @@ var setFinalExpContent = function(er,ar,curVars){
   if(util.isWithVars(er.content, opts)){
     if(er.resultType === 'json'){
       toSet = true;
-      var spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr, isSpcl = (er.content.indexOf('"'+spcl+'"') !== -1),
+      var spcl = opts.startVarExpr + '*' + opts.endVarExpr, isSpcl = (er.content.indexOf('"'+spcl+'"') !== -1),
         exCont = util.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
         util.walkInto(function(valn, key, root){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
             var val = root[key], tmpKy = null;
-            if(util.isWithVars(key, config.meta) && key !== spcl){
-              tmpKy = util.searchAndReplaceString(key, curVars, config.meta);
+            if(util.isWithVars(key, opts) && key !== spcl){
+              tmpKy = util.searchAndReplaceString(key, curVars, opts);
               if(tmpKy !== key){
                 val = root[tmpKy] = root[key];
                 delete root[key];
               }
             }
             if(typeof val === 'string' && val && val !== spcl){
-              if(util.isWithVars(val, config.meta)){
-                var newValue = curVars[val.substring(config.meta.startVarExpr.length, val.length - config.meta.endVarExpr.length)];
-                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, config.meta);
+              if(util.isWithVars(val, opts)){
+                var newValue = curVars[val.substring(opts.startVarExpr.length, val.length - opts.endVarExpr.length)];
+                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, opts);
               }
             }
           }
@@ -263,7 +263,7 @@ var setFinalExpContent = function(er,ar,curVars){
         er.content = util.stringify(exCont);
       }
     } else {
-      er.content = util.searchAndReplaceString(er.content, curVars, config.meta);
+      er.content = util.searchAndReplaceString(er.content, curVars, opts);
     }
   }
   return toSet;
@@ -279,7 +279,13 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
   if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
     if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
-    isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
+    try {
+      isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);  
+    } catch(e){
+      if(toSendTRTC.remarks) toSendTRTC.remarks + ' ';
+      toSendTRTC.remarks = (toSendTRTC.remarks || '')  + e.message;
+    }
+    
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
