@@ -167,12 +167,16 @@ var getAuthHeader = function(ath){
 
 var fireRequest = function(tc, trtc, callback){
   runner({ testcase : tc },function(result){
-    if(!result || result.err) {
-      //console.log(result);
-    }
+    var afterWait = function(){
+      if(!result || result.err) {
+        //console.log(result);
+      }
+      if(result.runnerCase) trtc.runnerCase = result.runnerCase;
+      callback(result);
+    };
     trtc.executionTime = new Date().getTime() - trtc.executionTime;
-    if(result.runnerCase) trtc.runnerCase = result.runnerCase;
-    callback(result);
+    if(tc.waitFor) setTimeout(afterWait, tc.waitFor*1000);
+    else afterWait();
   });
 };
 
@@ -280,12 +284,12 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
   if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
     if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
     try {
-      isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);  
+      isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
     } catch(e){
       if(toSendTRTC.remarks) toSendTRTC.remarks + ' ';
       toSendTRTC.remarks = (toSendTRTC.remarks || '')  + e.message;
     }
-    
+
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
       var remarks = JSON.stringify(toSendTRTC.remarks);
       if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
