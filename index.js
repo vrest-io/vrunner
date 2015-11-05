@@ -128,7 +128,7 @@ var findHelpers = function(vrunner, what, next){
 };
 
 var createTestRun = function(instanceURL, filterData, next){
-  var filters = util.cloneObject(filterData);
+  var filters = filterData;
   filters.currentPage = 0;
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
@@ -276,8 +276,8 @@ var setFinalExpContent = function(er,ar,curVars){
 var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMap){
   var isPassed = false, toSendTC, actualResults = runnerModel.result,
       headers = runnerModel.result.headers, curVars = variables;
-  toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
   var toSendTRTC = { headers : {} }, jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
+  toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
   var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
@@ -399,7 +399,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
       toSend.testRunId = self.testRunId;
       toSend.filterData = self.filters;
     } else {
-      toSend.list = util.cloneObject(self.pendingTrtc);
+      toSend.list = self.pendingTrtc;
     }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
