@@ -291,10 +291,7 @@ var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMa
     }
 
     if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
-      var remarks = JSON.stringify(toSendTRTC.remarks);
-      if(remarks.length > 3 && remarks.length < 2000) { } //console.log(remarks);
-      else if(remarks.length > 2000) remarks = remarks.substring(0, 1993) + '....';
-      runnerModel.remarks = remarks;
+      runnerModel.remarks = util.cropString(JSON.stringify(toSendTRTC.remarks), RUNNER_LIMIT);
     }
   } else {
     runnerModel.remarks = "Error found in evaluating linked response validator code.";
@@ -358,7 +355,8 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       failed: report.failed,
       notExecuted: report.notExecuted
     },
-    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.stringify(error)) : 'All test cases executed successfully.'
+    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
+                : 'All test cases executed successfully.'
   }}, function(err,response,body){
     if(error) self.emit('end',error);
     else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
