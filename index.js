@@ -240,10 +240,12 @@ var extractVarsFrom = function(tc, result, tcVar) {
 var setFinalExpContent = function(er,ar,curVars){
   var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:jquery},''] };
   if(util.isWithVars(er.content, opts)){
-    if(er.resultType === 'json'){
-      toSet = true;
-      var spcl = opts.startVarExpr + '*' + opts.endVarExpr, isSpcl = (er.content.indexOf('"'+spcl+'"') !== -1),
-        exCont = util.getJsonOrString(er.content);
+    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
+    toSet = true;
+    if(er.content === spclFl) {
+      er.content = ar.content;
+    } else if(er.resultType === 'json'){
+      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = this.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
         util.walkInto(function(valn, key, root){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
