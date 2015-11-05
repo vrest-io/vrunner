@@ -245,7 +245,7 @@ var setFinalExpContent = function(er,ar,curVars){
     if(er.content === spclFl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = this.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = util.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
         util.walkInto(function(valn, key, root){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
