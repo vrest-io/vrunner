@@ -507,6 +507,7 @@ vRunner.prototype.run = function(next){
             content: '',
             resultType: 'text'
           },
+          isExecuted: false,
           testRunId : self.testRunId,
           testCaseId : tc.id,
           executionTime: 0
