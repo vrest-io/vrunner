@@ -14,7 +14,6 @@ var request = require('request').defaults({jar: true, json: true}),
     jsonSchemaFiles = require('./lib/schemaFiles'),
     util = require('./lib/util'),
     runner = require('./lib/testRunner'),
-    jquery = require('jquery'),
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit'],
     JSONPath = require('./lib/jsonpath'),
@@ -213,7 +212,7 @@ var getActualResults = function(response) {
 
 var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
-    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:jquery},''] };
+    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
     tc.tcVariables.forEach(function(vr){
       if(vr.name && vr.path && util.isValidPathVar({ meta : opts },vr.path)){
         if(vr.path.indexOf(opts.startVarExpr) === 0 && vr.path.indexOf(opts.endVarExpr) !== -1){
@@ -238,7 +237,7 @@ var extractVarsFrom = function(tc, result, tcVar) {
 };
 
 var setFinalExpContent = function(er,ar,curVars){
-  var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{$:jquery},''] };
+  var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
   if(util.isWithVars(er.content, opts)){
     var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
     toSet = true;
