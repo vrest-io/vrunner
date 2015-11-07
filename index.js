@@ -19,6 +19,7 @@ var request = require('request').defaults({jar: true, json: true}),
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
     V_BASE_URL = 'https://vrest.io/',
+    publicConfiguration = {},
     RUNNER_LIMIT = 5000,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -201,6 +202,19 @@ var getResultType = function(response) {
   return rType;
 };
 
+var getJSONPathValue = function(path, json, meta, tcVar){
+  var ret = undefined, tp;
+  if(typeof(json) != 'object') return ret;
+  ret = JSONPath(json, path);
+
+  if(ret === 'V_PATH_NOT_RESOLVED') {
+    tp = util.searchAndReplaceString(path, tcVar, { startVarExpr : meta.startVarExpr, endVarExpr : meta.endVarExpr });
+    if(tp !== path) ret = JSONPath(json, tp);
+  }
+  if(Array.isArray(ret) && ret.length === 1) return ret[0];
+  else return ret;
+};
+
 var getActualResults = function(response) {
   return {
     statusCode : response.statusCode,
@@ -210,31 +224,101 @@ var getActualResults = function(response) {
   };
 };
 
+var getJsonPath = function(path){
+  if(typeof path === 'string') {
+    return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
+  }
+};
+
+var isAssertionForValidator = function(ass){
+  return ass.name === 'textBody' && MONGO_REGEX.test(ass.type);
+};
+
+var assert = function(validatorIdCodeMap, ass, ops){
+  var ret = { passed : false }, forValidator = ops.forValidator;
+  if(forValidator){
+    ret.assertion = { name : 'textBody', type : ass.type };
+    if(typeof validatorIdCodeMap[ass.type] === 'function') {
+      ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
+      if(forValidator[1].remarks && forValidator[1].remarks.length) {
+        var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
+        ret.remarks = remarks;
+        delete forValidator[1].remarks;
+      }
+    } else {
+      ret.result = "Error found in evaluating linked response validator code.";
+    }
+  } else {
+    if(typeof util.v_asserts._[ass.type] === 'function'){
+      ret.passed = util.v_asserts._[ass.type](ops.ac,ops.ex);
+      ret.assertion = { name : ass.name, type : ass.type };
+      ret.assertion.property = ass.property || '';
+      ret.assertion.value = ass.value || '';
+      ret.assertion.actual = ops.setActual || ops.ac;
+    }
+  }
+  return ret;
+};
+
+
 var extractVarsFrom = function(tc, result, tcVar) {
   if(result && result.resultType){
-    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
+    var opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] },
+      jsonData = util.getJsonOrString(result.content), tp;
     tc.tcVariables.forEach(function(vr){
-      if(vr.name && vr.path && util.isValidPathVar({ meta : opts },vr.path)){
+      if(vr.name && vr.path){
         if(vr.path.indexOf(opts.startVarExpr) === 0 && vr.path.indexOf(opts.endVarExpr) !== -1){
           opts.prefs[1] = result.content;
           opts.varkey = vr.name;
           util.funcVarReplace([vr.path], opts, tcVar);
         } else if(result.resultType === 'json') {
-          var jsonData = util.getJsonOrString(result.content), tp;
-          if(typeof(jsonData) != 'object') return;
-          tcVar[vr.name] = JSONPath(jsonData, vr.path);
-          if(tcVar[vr.name] === 'TC_VAR_NOT_RESOLVED') {
-            tp = util.searchAndReplaceString(vr.path, tcVar, opts);
-            if(tp !== vr.path) tcVar[vr.name] = JSONPath(jsonData, tp);
-          }
-          if(Array.isArray(tcVar[vr.name]) && tcVar[vr.name].length === 1)
-            tcVar[vr.name] = tcVar[vr.name][0]; // TODO : how it was working earlier? jsonpath return array.
+          tcVar[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData, opts, tcVar);
         }
       }
     });
   }
   return;
 };
+
+var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
+  if(util.v_asserts.shouldAddProperty(ass.name)) {
+    ass.property = util.searchAndReplaceString(ass.property, curVars, publicConfiguration);
+  } else delete ass.property;
+  if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, { meta : publicConfiguration })) {
+    ass.value = util.searchAndReplaceString(ass.value, curVars, publicConfiguration);
+  } else delete ass.value;
+  switch(ass.name){
+    case 'statusCode' :
+      return { ac : actualResults.statusCode, ex : ass.value };
+    case 'responseTime' :
+      return { ac : executionTime, ex : ass.value };
+    case 'header' :
+      if(!ass.property) return {};
+      return { ac : headersMap[ass.property.toLowerCase()], ex : ass.value };
+    case 'textBody' :
+      return { ac : actualResults.content, setActual : publicConfiguration.copyFromActual, ex : ass.value };
+    case 'jsonBody' :
+      return {
+        ac : getJSONPathValue(util.getJsonPath(ass.property), actualJSONContent, publicConfiguration, curVars), ex : ass.value,
+        setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
+      };
+    case 'default' :
+      return {};
+  }
+};
+
+var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
+  if(applyToValidator.length) return;
+  var actualResults = runnerModel.result, curVars = runnerModel.variable,
+    toSendTC = (typeof tc.toJSON == 'function') ? tc.toJSON() : tc, toSendTRTC = { headers : headersMap },
+    jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
+  toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
+  toSendTRTC.actualResults = actualResults;
+  var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
+  applyToValidator.push(toSendTC, toSendTRTC, util.methodCodes);
+  if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+};
+
 
 var setFinalExpContent = function(er,ar,curVars){
   var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
@@ -274,29 +358,62 @@ var setFinalExpContent = function(er,ar,curVars){
   return toSet;
 };
 
-var assertResults = function(toSendTC, runnerModel, variables, validatorIdCodeMap){
-  var isPassed = false, toSendTC, actualResults = runnerModel.result,
-      headers = runnerModel.result.headers, curVars = variables;
-  var toSendTRTC = { headers : {} }, jsonSchema = (toSendTC.expectedResults && toSendTC.expectedResults.contentSchema) || '{}';
-  toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
-  toSendTRTC.actualResults = actualResults;
-  var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
-  headers.forEach(function(a){ toSendTRTC.headers[a.name] = a.value;  });
-  if(typeof validatorIdCodeMap[toSendTC.responseValidatorId] === 'function') {
-    if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+var setAssertionUtil = function(meta){
+  var typeOpts = util.v_asserts.assertTypeOpts,
+    unCamelCase = util.unCamelCase.bind(util),
+    funcMap = util.v_asserts._,
+    valMap = {},
+    subTypeOpts = util.v_asserts.assertSubTypeOpts;
+  meta.prefetch.responsevalidator.forEach(function(rs){
+    if(!rs.isUtil) {
+      valMap[rs.id] = 'Call '+rs.name;
+      meta.assertTypes.textBody.tests.push(rs.id);
+    }
+  });
+  for(var ky in meta.assertTests){
     try {
-      isPassed = validatorIdCodeMap[toSendTC.responseValidatorId](toSendTC, toSendTRTC, util.methodCodes);
-    } catch(e){
-      if(toSendTRTC.remarks) toSendTRTC.remarks + ' ';
-      toSendTRTC.remarks = (toSendTRTC.remarks || '')  + e.message;
+      funcMap[ky] = eval('(function(a,b){ return '+meta.assertTests[ky]+';})');
+    } catch(el){
     }
-
-    if(toSendTRTC.remarks && toSendTRTC.remarks.length) {
-      runnerModel.remarks = util.cropString(JSON.stringify(toSendTRTC.remarks), RUNNER_LIMIT);
-    }
-  } else {
-    runnerModel.remarks = "Error found in evaluating linked response validator code.";
   }
+  for(ky in meta.assertTypes){
+    subTypeOpts[ky] = [];
+    typeOpts.push([meta.assertTypes[ky].name, ky]);
+    meta.assertTypes[ky].tests.forEach(function(ts){
+      if(meta.mongoIdRegex.test(ts)){
+        subTypeOpts[ky].push([valMap[ts], ts]);
+      } else {
+        subTypeOpts[ky].push([unCamelCase(ts), ts]);
+      }
+    });
+  }
+};
+
+var assertResults = function(runnerModel, tc, validatorIdCodeMap){
+  if(!tc) tc = {};
+  var isPassed = true, toValidate = false, headers = {},
+    actualResults = runnerModel.result, isValAss = isAssertionForValidator;
+  actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
+  var actualJSONContent = util.getJsonOrString(actualResults.content),
+      findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
+    applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
+    ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
+  tc.assertions.forEach(function(ass){
+    if(ass.id){
+      var now = false;
+      if(isValAss(ass)) {
+        initForVal(runnerModel, applyToValidator, tc);
+        now = asserting(ass, { forValidator : applyToValidator });
+      } else {
+        now = asserting(ass, findEx(ass, actualResults, actualJSONContent, runnerModel.executionTime));
+      }
+      if(now){
+        ret.push(now);
+        isPassed = isPassed && now.passed;
+      }
+    }
+  });
+  runnerModel.assertionRemarks = ret;
   return isPassed;
 };
 
@@ -450,6 +567,16 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
+      request(V_BASE_URL + 'public-configuration', function(err,res,body){
+        if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
+        else {
+          publicConfiguration = body;
+          publicConfiguration.mongoIdRegex = MONGO_REGEX;
+          cb();
+        }
+      });
+    },
+    function(cb){
       findHelpers(self, 'responsevalidator', function(err, vals){
         if(err) cb(err, 'VRUN_OVER');
         else {
@@ -462,6 +589,8 @@ vRunner.prototype.run = function(next){
               console.log(e);
             }
           });
+          publicConfiguration.prefetch = { responsevalidator : vals };
+          setAssertionUtil(publicConfiguration);
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
           ZSV.setRemoteReference('http://json-schema.org/draft-04/schema#', sk.draft04ValidatorFile);
@@ -565,7 +694,7 @@ vRunner.prototype.run = function(next){
               trtc.result = actualResults;
               extractVarsFrom(tc, actualResults, self.variables);
               trtc.variable = util.cloneObject(self.variables);
-              isPassed = assertResults(tc,trtc,self.variables,self.validatorIdCodeMap);
+              isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
             }
             if(!trtc.remarks) trtc.remarks = remarks;
             trtc.isExecuted = isExecuted;
