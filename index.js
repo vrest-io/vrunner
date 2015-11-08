@@ -225,7 +225,7 @@ var getActualResults = function(response) {
 };
 
 var getJsonPath = function(path){
-  if(typeof path === 'string') {
+  if(typeof path === 'string' && path.length) {
     return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
   }
 };
