@@ -665,6 +665,7 @@ vRunner.prototype.run = function(next){
             self.noNotExecuted++;
             self.emit('testcase',null,tc,trtc);
           }
+          trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
           self.sendToServer(self.instanceURL,trtc,function(err){
             if(err) {
               //console.log('Error occurred while saving execution results : ', err);
