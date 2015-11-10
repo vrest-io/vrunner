@@ -239,7 +239,14 @@ var assert = function(validatorIdCodeMap, ass, ops){
   if(forValidator){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
-      ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
+      try {
+        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);  
+      } catch(e){
+        ret.passed = false;
+        ret.remarks = 'An error found while validating with response validator : ' + e.message;
+        console.log(e.stack);
+      }
+      
       if(forValidator[1].remarks && forValidator[1].remarks.length) {
         var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
         ret.remarks = remarks;
@@ -582,7 +589,6 @@ vRunner.prototype.run = function(next){
         else {
           self.validatorIdCodeMap = {};
           vals.forEach(function(model){
-            var func = eval(model.code);
             try {
               (model.isUtil ? util.methodCodes : self.validatorIdCodeMap)[( model.isUtil ? model.name : model.id)] = eval(model.code);
             } catch(e){
