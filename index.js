@@ -617,17 +617,24 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'projenv', function(err,vars){
+      findHelpers(self, 'projenv', function(err,envs){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.selectedEnvironment = false;
-          for(var z=0,len=vars.length;z<len;z++){
-            if(self.projEnv === vars[z].name){
-              self.selectedEnvironment = vars[z].id;
+          for(var z=0,len=envs.length;z<len;z++){
+            if(self.projEnv === envs[z].name){
+              self.selectedEnvironment = envs[z].id;
               break;
             }
           }
-          if(!self.selectedEnvironment) self.selectedEnvironment = undefined;
+          if(!self.selectedEnvironment){
+            if(self.projEnv && self.projEnv !== 'Default'){
+              self.emit('error', 'Project environment "' + self.projEnv + '" not found.');
+              process.exit(1);
+            } else {
+              self.selectedEnvironment = undefined;
+            }
+          }
           cb();
         }
       });
