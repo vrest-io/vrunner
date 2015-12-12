@@ -10,7 +10,7 @@
 
 #### Usage: 
 	vrunner --email=<vrest_email> --password=<vrest_password> 
-	        --url="<vrest_testcase_list_url>"
+	        --url="<vrest_testcase_list_url>" [--env=<environment_name>]
   	        [--filepath="<path_of_log_file_for_logger_other_than_console>"]
   	        [--logger=<one_of_available_loggers>]
 
@@ -23,6 +23,8 @@
                          URL" available in Left hand side, below the "Filters section". 
                          Provide the copied URL in this option. Ensure that you enclose
                          URL in double quotes.
+        -N, --env      : Provide the environment name to initialize the global variables.
+                         By default environment `Default` is used.
         -L, --logger   : Your desired logging of the vRUNNER execution process and 
                          result. This can be either `console` or `json` or `xunit`.
                          By default `console` logger is used.

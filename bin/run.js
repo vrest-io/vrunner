@@ -52,8 +52,10 @@ opts.forEach(function(arg){
 
 if(showHelp){
   console.log('\n    vRUNNER - Runs vREST test cases.\n');
-  console.log('    Usage: vrunner --email=<vrest_email> --password=<vrest_password> --url="<vrest_testcase_list_url>"');
-  console.log('           [--filepath="<path_of_log_file_for_logger_other_than_console>"] [--logger=<one_of_available_loggers>]\n');
+  console.log('    Usage: vrunner --email=<vrest_email> --password=<vrest_password> ');
+  console.log('           --url="<vrest_testcase_list_url> [--env=<environment_name>]"');
+  console.log('           [--filepath="<path_of_log_file_for_logger_other_than_console>"]');
+  console.log('           [--logger=<one_of_available_loggers>]\n');
   console.log('    Options:\n');
   console.log('    -E, --email    : Email ID through which you have registered on vREST');
   console.log('    -P, --password : Password of your vREST account');
@@ -61,10 +63,9 @@ if(showHelp){
   console.log('                     instance and select Test Cases tab. Now click on button "Copy Current Test Case List URL" available');
   console.log('                     in Left hand side, below the "Filters section". Provide the copied URL in this option. Ensure that');
   console.log('                     you enclose the URL in double quotes.');
+  console.log('    -N, --env      : Provide the environment name to initialize the global variables.');
+  console.log('                     By default environment `Default` is used.');
   console.log('    -L, --logger   : Your desired logging of the vRUNNER execution process and result.');
-  console.log('                     This can be either `console` or `json` or `xunit`.');
-  console.log('                     By default `console` logger is used.');
-  console.log('    -N, --env      : Your desired logging of the vRUNNER execution process and result.');
   console.log('                     This can be either `console` or `json` or `xunit`.');
   console.log('                     By default `console` logger is used.');
   console.log('    -F, --filepath : Valid if other than `console` logger is selected.');
