@@ -32,6 +32,7 @@ var request = require('request').defaults({jar: true, json: true}),
       credentials : {},
       logger : 'console',
       varColMap : {},
+      projEnv : undefined,
       exitOnDone : true,
       pageSize : 100,
       authorizations : {},
@@ -240,13 +241,13 @@ var assert = function(validatorIdCodeMap, ass, ops){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
       try {
-        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);  
+        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
       } catch(e){
         ret.passed = false;
         ret.remarks = 'An error found while validating with response validator : ' + e.message;
         console.log(e.stack);
       }
-      
+
       if(forValidator[1].remarks && forValidator[1].remarks.length) {
         var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
         ret.remarks = remarks;
@@ -306,7 +307,7 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
       return { ac : actualResults.content, setActual : publicConfiguration.copyFromActual, ex : ass.value };
     case 'jsonBody' :
       return {
-        ac : getJSONPathValue(util.getJsonPath(ass.property), actualJSONContent, publicConfiguration, curVars), ex : ass.value,
+        ac : getJSONPathValue(getJsonPath(ass.property), actualJSONContent, publicConfiguration, curVars), ex : ass.value,
         setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
       };
     case 'default' :
@@ -616,10 +617,27 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
+      findHelpers(self, 'projenv', function(err,vars){
+        if(err) cb(err, 'VRUN_OVER');
+        else {
+          self.selectedEnvironment = false;
+          for(var z=0,len=vars.length;z<len;z++){
+            if(self.projEnv === vars[z].name){
+              self.selectedEnvironment = vars[z].id;
+              break;
+            }
+          }
+          if(!self.selectedEnvironment) self.selectedEnvironment = undefined;
+          cb();
+        }
+      });
+    },
+    function(cb){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          self.variables = util.configureVarCol(vars, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
+          self.variables = util.configureVarCol(vars, {
+            selectedEnvironment : self.selectedEnvironment, startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
           cb();
         }
       });

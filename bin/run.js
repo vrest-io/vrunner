@@ -33,6 +33,10 @@ opts.forEach(function(arg){
     case '--filepath':
       options.filePath = value;
       break;
+    case '-N':
+    case '--env':
+      options.projEnv = value;
+      break;
     case '--vrestbaseurl':
       options.vRESTBaseUrl = value;
       break;
@@ -58,6 +62,9 @@ if(showHelp){
   console.log('                     in Left hand side, below the "Filters section". Provide the copied URL in this option. Ensure that');
   console.log('                     you enclose the URL in double quotes.');
   console.log('    -L, --logger   : Your desired logging of the vRUNNER execution process and result.');
+  console.log('                     This can be either `console` or `json` or `xunit`.');
+  console.log('                     By default `console` logger is used.');
+  console.log('    -N, --env      : Your desired logging of the vRUNNER execution process and result.');
   console.log('                     This can be either `console` or `json` or `xunit`.');
   console.log('                     By default `console` logger is used.');
   console.log('    -F, --filepath : Valid if other than `console` logger is selected.');
