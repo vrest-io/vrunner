@@ -433,9 +433,9 @@ function vRunner(opts){
     V_BASE_URL = opts.vRESTBaseUrl;
     delete opts.vRESTBaseUrl;
   }
-  if(opts.noAuth === true){
+  if(opts.nosslcheck === true){
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    delete opts.noAuth;
+    delete opts.nosslcheck;
   }
   var dk, error, queryObject;
   for(dk in options){
