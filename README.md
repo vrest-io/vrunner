@@ -33,6 +33,6 @@
                          and result logs will be dumped. If path/file is not present, 
                          tool will try to setup that path, and create file automatically.
                          Please note that if file already exists, that will be 
-                         overwritten. By default it will be the `vrest/logs.[json|xml]` 
+                         overwritten. By default it will be the `vrest_logs/logs.[json|xml]` 
                          in current directory.
         -H, --help     : To see this help.
