@@ -44,6 +44,10 @@ opts.forEach(function(arg){
     case '--help':
       showHelp = true;
       break;
+    case '-A':
+    case '--noauth':
+      options.noAuth = (value === 'true');
+      break;
     default :
       options.url = value;
   }
@@ -65,6 +69,8 @@ if(showHelp){
   console.log('                     you enclose the URL in double quotes.');
   console.log('    -N, --env      : Provide the environment name to initialize the global variables.');
   console.log('                     By default environment `Default` is used.');
+  console.log('    -A, --noauth   : If this argument is `true`, vRUNNER will process all requests, without Secure Certificate Check.');
+  console.log('                     By default Secure Certificate Check is enabled.');
   console.log('    -L, --logger   : Your desired logging of the vRUNNER execution process and result.');
   console.log('                     This can be either `console` or `json` or `xunit`.');
   console.log('                     By default `console` logger is used.');

@@ -429,8 +429,14 @@ exports.version = '0.0.1';
 exports.util = util;
 
 function vRunner(opts){
-  if(opts.vRESTBaseUrl) V_BASE_URL = opts.vRESTBaseUrl;
-  delete opts.vRESTBaseUrl;
+  if(opts.vRESTBaseUrl){
+    V_BASE_URL = opts.vRESTBaseUrl;
+    delete opts.vRESTBaseUrl;
+  }
+  if(opts.noAuth === true){
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    delete opts.noAuth;
+  }
   var dk, error, queryObject;
   for(dk in options){
     this[dk] = options[dk];
