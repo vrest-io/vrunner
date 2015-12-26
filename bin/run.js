@@ -7,7 +7,6 @@ var options = {
   },
   url: process.env.VREST_URL
 };
-
 var opts = process.argv.slice(2), showHelp = false, util = require('./../lib/util');
 
 if(!opts.length) showHelp = true;
@@ -40,16 +39,18 @@ opts.forEach(function(arg){
     case '--vrestbaseurl':
       options.vRESTBaseUrl = value;
       break;
+    case '-S':
+    case '--nosslcheck':
+      options.nosslcheck = (value === 'true');
+      break;
+    case '-U':
+    case '--url':
+      options.url = value;
+      break;
     case '-H':
     case '--help':
-      showHelp = true;
-      break;
-    case '-S':
-    case '--ignoresslcheck':
-      options.ignoresslcheck = (value === 'true');
-      break;
     default :
-      options.url = value;
+      showHelp = true;
   }
 });
 
