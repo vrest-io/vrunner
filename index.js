@@ -104,28 +104,19 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
 };
 
 var hasRunPermission = function(instance, project, next){
-  request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
+  request(V_BASE_URL+'user/hasPermission?prefetchRunnerData=true&permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project);
+    else next(null,body.output.project, body.prefetch);
   });
 };
 
-var findHelpers = function(vrunner, what, next){
+var findHelpers = function(prefetch, vrunner, what, next){
   vrunner.emit('log', 'Finding '+what+'s ...');
-  var instanceURL = vrunner.instanceURL,
-    projectId = vrunner.projectId;
-
-  request(instanceURL+'/g/'+what+'?&projectId='+projectId,
-    function(err,res,body){
-      if(err || body.error) next(['Error while fetching '+what+'s :', err||body]);
-      else {
-        if(!Array.isArray(body.output)) body.output = [];
-        next(null,body.output);
-      }
-  });
+  if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+  next(null,prefetch[what]);
 };
 
 var createTestRun = function(instanceURL, filterData, next){
@@ -559,10 +550,11 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey){
+      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch){
         if(err) cb(err);
         else {
           if(projectKey) self.projectKey = projectKey;
+          findHelpers = findHelpers.bind(undefined,prefetch || {});
           cb();
         }
       });
@@ -581,7 +573,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      request(V_BASE_URL + 'public-configuration', function(err,res,body){
+      findHelpers(self, 'publicConfiguration', function(err,body){
         if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
           publicConfiguration = body;
