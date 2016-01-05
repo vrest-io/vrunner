@@ -548,9 +548,12 @@ vRunner.prototype.run = function(next){
   var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0 };
   var tasks = [
     function(cb){
-      request(V_BASE_URL+'/oneTimeLoginKey',function(err,res,body){
+      request(V_BASE_URL+'oneTimeLoginKey',function(err,res,body){
         if(err || !body.output) cb(err || 'Could not get the access to login key.');
-        else LOGIN_KEY = body.output;
+        else {
+          LOGIN_KEY = body.output;
+          cb();
+        }
       });
     },
     function(cb){
