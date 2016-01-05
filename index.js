@@ -25,7 +25,6 @@ var request = require('request').defaults({jar: true, json: true}),
     ORG_URL_PREFIX = 'i/',
     START_VAR_EXPR = '{{',
     END_VAR_EXPR = '}}',
-    LOGIN_KEY = '',
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     pages = [false],
@@ -508,8 +507,7 @@ vRunner.prototype.kill = function(next){
 
 vRunner.prototype.sigIn = function(next){
   this.emit('log', 'Logging you in ...');
-  request({ method: 'POST', uri: V_BASE_URL + 'user/signin',
-      headers: { 'x-vrest-login-key': LOGIN_KEY }, body: this.credentials }, function(err,res,body){
+  request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
     if(err || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
     else next(null,body);
   });
@@ -551,7 +549,7 @@ vRunner.prototype.run = function(next){
       request(V_BASE_URL+'oneTimeLoginKey',function(err,res,body){
         if(err || !body.output) cb(err || 'Could not get the access to login key.');
         else {
-          LOGIN_KEY = body.output;
+          request = request.defaults({ headers : { 'x-vrest-login-key': body.output } });
           cb();
         }
       });
