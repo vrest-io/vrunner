@@ -256,7 +256,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
     }
   } else {
     if(typeof util.v_asserts._[ass.type] === 'function'){
-      ret.passed = util.v_asserts._[ass.type](ops.ac,ops.ex);
+      ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
       ret.assertion.property = ass.property || '';
       ret.assertion.value = ass.value || '';
