@@ -38,6 +38,9 @@ var request = require('request').defaults({jar: true, json: true}),
       authorizations : {},
       validatorIdCodeMap : {},
       variables : {}
+    },
+    config = {
+      meta : publicConfiguration
     };
 
 var getInstanceName = function(url){
@@ -287,7 +290,7 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
   if(util.v_asserts.shouldAddProperty(ass.name)) {
     ass.property = util.searchAndReplaceString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
-  if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, { meta : publicConfiguration })) {
+  if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
     ass.value = util.searchAndReplaceString(ass.value, curVars, publicConfiguration);
   } else delete ass.value;
   switch(ass.name){
@@ -324,8 +327,8 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
 
 
 var setFinalExpContent = function(er,ar,curVars){
-  var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
-  if(util.isWithVars(er.content, opts)){
+  var toSet = false;
+  if(util.isWithVars(er.content, config.meta)){
     var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
     toSet = true;
     if(er.content === spclFl) {
@@ -336,17 +339,17 @@ var setFinalExpContent = function(er,ar,curVars){
         util.walkInto(function(valn, key, root){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
             var val = root[key], tmpKy = null;
-            if(util.isWithVars(key, opts) && key !== spcl){
-              tmpKy = util.searchAndReplaceString(key, curVars, opts);
+            if(util.isWithVars(key, config.meta) && key !== spcl){
+              tmpKy = util.searchAndReplaceString(key, curVars, config.meta);
               if(tmpKy !== key){
                 val = root[tmpKy] = root[key];
                 delete root[key];
               }
             }
             if(typeof val === 'string' && val && val !== spcl){
-              if(util.isWithVars(val, opts)){
-                var newValue = curVars[val.substring(opts.startVarExpr.length, val.length - opts.endVarExpr.length)];
-                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, opts);
+              if(util.isWithVars(val, config.meta)){
+                var newValue = curVars[val.substring(config.meta.startVarExpr.length, val.length - config.meta.endVarExpr.length)];
+                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, config.meta);
               }
             }
           }
@@ -355,7 +358,7 @@ var setFinalExpContent = function(er,ar,curVars){
         er.content = util.stringify(exCont);
       }
     } else {
-      er.content = util.searchAndReplaceString(er.content, curVars, opts);
+      er.content = util.searchAndReplaceString(er.content, curVars, config.meta);
     }
   }
   return toSet;
@@ -582,6 +585,8 @@ vRunner.prototype.run = function(next){
         if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
           publicConfiguration = body;
+          publicConfiguration.startVarExpr = START_VAR_EXPR;
+          publicConfiguration.endVarExpr = END_VAR_EXPR;
           publicConfiguration.mongoIdRegex = MONGO_REGEX;
           cb();
         }
