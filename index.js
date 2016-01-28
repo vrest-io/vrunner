@@ -109,13 +109,17 @@ var hasRunPermission = function(instance, project, next){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project, body.prefetch);
+    else next(null,body.output.project, body.output.prefetch);
   });
 };
 
 var findHelpers = function(prefetch, vrunner, what, next){
   vrunner.emit('log', 'Finding '+what+'s ...');
-  if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+  if(what === 'publicConfiguration'){
+    if(typeof prefetch[what] !== 'object') prefetch[what] = {};
+  } else {
+    if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+  }
   next(null,prefetch[what]);
 };
 
@@ -459,7 +463,7 @@ function vRunner(opts){
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
   this.pendingTrtc = [];
   this.stopped = false;
-  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0;
+  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
   var self = this;
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
@@ -476,9 +480,9 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       total : report.total,
       passed : report.passed,
       failed: report.failed,
-      notExecuted: report.notExecuted
-    },
-    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
+      notExecuted: report.notExecuted,
+      notRunnable: report.notRunnable
+    }, remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
                 : 'All test cases executed successfully.'
   }}, function(err,response,body){
     if(error) self.emit('end',error);
@@ -491,12 +495,13 @@ vRunner.prototype.kill = function(next){
   var self = this;
   self.sendToServer(self.instanceURL,'OVER',function(err){
     if(err) self.emit('warning',err);
-    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted);
+    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
     self.sendToServer(self.instanceURL,ne,function(err){
       if(err) self.emit('warning',err);
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,
-        { total : self.totalRecords, passed : self.noPassed, failed : self.noFailed, notExecuted : ne + self.noNotExecuted },
-      function(err){
+      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
+        total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
+        failed : self.noFailed, notExecuted : ne + self.noNotExecuted
+      }, function(err){
         if(err) self.emit('warning',err);
         self.emit('log',"\nTest Run Stopped.");
         process.exit(1);
@@ -543,17 +548,8 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
 };
 
 vRunner.prototype.run = function(next){
-  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0 };
+  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0 };
   var tasks = [
-    function(cb){
-      request(V_BASE_URL+'oneTimeLoginKey',function(err,res,body){
-        if(err || !body.output) cb(err || 'Could not get the access to login key.');
-        else {
-          request = request.defaults({ headers : { 'x-vrest-login-key': body.output } });
-          cb();
-        }
-      });
-    },
     function(cb){
       self.sigIn(cb);
     },
@@ -603,7 +599,8 @@ vRunner.prototype.run = function(next){
               console.log(e);
             }
           });
-          publicConfiguration.prefetch = { responsevalidator : vals };
+          if(!publicConfiguration.prefetch) publicConfiguration.prefetch = {};
+          publicConfiguration.prefetch.responsevalidator = vals;
           setAssertionUtil(publicConfiguration);
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
@@ -693,8 +690,13 @@ vRunner.prototype.run = function(next){
               self.emit('testcase',false,tc,trtc);
             }
           } else {
-            report.notExecuted++;
-            self.noNotExecuted++;
+            if(tc.runnable){
+              report.notExecuted++;
+              self.noNotExecuted++;
+            } else {
+              report.notRunnable++;
+              self.notRunnable++;
+            }
             self.emit('testcase',null,tc,trtc);
           }
           trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
