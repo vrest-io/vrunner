@@ -56,7 +56,7 @@ module.exports = function(args){
   args.reportsLogger = function(log){
     mainJson.testsuite.$.tests = log.total;
     mainJson.testsuite.$.failures = log.failed;
-    mainJson.testsuite.$.skipped = log.notExecuted;
+    mainJson.testsuite.$.skipped = log.notExecuted + log.notRunnable;
   };
   args.runner.on('done',function(){
     util.writeToFile(args.runner.filePath, builder.buildObject(mainJson));
