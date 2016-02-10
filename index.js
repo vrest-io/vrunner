@@ -429,8 +429,14 @@ exports.version = '0.0.1';
 exports.util = util;
 
 function vRunner(opts){
-  if(opts.vRESTBaseUrl) V_BASE_URL = opts.vRESTBaseUrl;
-  delete opts.vRESTBaseUrl;
+  if(opts.vRESTBaseUrl){
+    V_BASE_URL = opts.vRESTBaseUrl;
+    delete opts.vRESTBaseUrl;
+  }
+  if(opts.nosslcheck === true){
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    delete opts.nosslcheck;
+  }
   var dk, error, queryObject;
   for(dk in options){
     this[dk] = options[dk];
@@ -617,17 +623,24 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'projenv', function(err,vars){
+      findHelpers(self, 'projenv', function(err,envs){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.selectedEnvironment = false;
-          for(var z=0,len=vars.length;z<len;z++){
-            if(self.projEnv === vars[z].name){
-              self.selectedEnvironment = vars[z].id;
+          for(var z=0,len=envs.length;z<len;z++){
+            if(self.projEnv === envs[z].name){
+              self.selectedEnvironment = envs[z].id;
               break;
             }
           }
-          if(!self.selectedEnvironment) self.selectedEnvironment = undefined;
+          if(!self.selectedEnvironment){
+            if(self.projEnv && self.projEnv !== 'Default'){
+              self.emit('error', 'Project environment "' + self.projEnv + '" not found.');
+              process.exit(1);
+            } else {
+              self.selectedEnvironment = undefined;
+            }
+          }
           cb();
         }
       });
