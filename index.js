@@ -588,6 +588,9 @@ vRunner.prototype.run = function(next){
           publicConfiguration.startVarExpr = START_VAR_EXPR;
           publicConfiguration.endVarExpr = END_VAR_EXPR;
           publicConfiguration.mongoIdRegex = MONGO_REGEX;
+          for(var ky in publicConfiguration){
+            config.meta[ky] = publicConfiguration[ky];
+          }
           cb();
         }
       });
