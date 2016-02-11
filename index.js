@@ -584,13 +584,10 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'publicConfiguration', function(err,body){
         if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
-          publicConfiguration = body;
+          config.meta = publicConfiguration = body;
           publicConfiguration.startVarExpr = START_VAR_EXPR;
           publicConfiguration.endVarExpr = END_VAR_EXPR;
           publicConfiguration.mongoIdRegex = MONGO_REGEX;
-          for(var ky in publicConfiguration){
-            config.meta[ky] = publicConfiguration[ky];
-          }
           cb();
         }
       });
