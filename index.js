@@ -476,6 +476,24 @@ function vRunner(opts){
 
 vRunner.prototype = new events.EventEmitter;
 
+var getRemarks = function(total, passed, failed, notExecuted, notRunnable){
+  var rem = '';
+  if(total){
+    if(notExecuted === total) rem = 'All of the test cases are not executed.';
+    else if(notRunnable === total) rem = 'No Test Cases executed as all the test cases are marked as Not Runnable.';
+    else if(passed === total) rem = 'All of the test cases are passed.';
+    else if(failed === total) rem = 'All of the test cases are failed.';
+    else {
+      if(passed) rem = (passed+' passed');
+      if(failed) rem += ((rem ? ', ' : '') + (failed+' failed'));
+      if(notExecuted) rem += ((rem ? ', ' : '') + (notExecuted+' not executed'));
+      if(notRunnable) rem += ((rem ? ', ' : '') + (notRunnable+' not runnable'));
+      rem += '.';
+    }
+  } else rem = 'No test case found to be executed.';
+  return rem;
+};
+
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
   request({ method : 'PATCH', url : url, body : {
@@ -486,7 +504,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       notExecuted: report.notExecuted,
       notRunnable: report.notRunnable
     }, remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
-                : 'All test cases executed successfully.'
+                : getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable);
   }}, function(err,response,body){
     if(error) self.emit('end',error);
     else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
