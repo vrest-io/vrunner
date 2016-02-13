@@ -38,6 +38,9 @@ var request = require('request').defaults({jar: true, json: true}),
       authorizations : {},
       validatorIdCodeMap : {},
       variables : {}
+    },
+    config = {
+      meta : publicConfiguration
     };
 
 var getInstanceName = function(url){
@@ -104,28 +107,23 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
 };
 
 var hasRunPermission = function(instance, project, next){
-  request(V_BASE_URL+'user/hasPermission?permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
+  request(V_BASE_URL+'user/hasPermission?prefetchRunnerData=true&permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project);
+    else next(null,body.output.project, body.output.prefetch);
   });
 };
 
-var findHelpers = function(vrunner, what, next){
+var findHelpers = function(prefetch, vrunner, what, next){
   vrunner.emit('log', 'Finding '+what+'s ...');
-  var instanceURL = vrunner.instanceURL,
-    projectId = vrunner.projectId;
-
-  request(instanceURL+'/g/'+what+'?&projectId='+projectId,
-    function(err,res,body){
-      if(err || body.error) next(['Error while fetching '+what+'s :', err||body]);
-      else {
-        if(!Array.isArray(body.output)) body.output = [];
-        next(null,body.output);
-      }
-  });
+  if(what === 'publicConfiguration'){
+    if(typeof prefetch[what] !== 'object') prefetch[what] = {};
+  } else {
+    if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+  }
+  next(null,prefetch[what]);
 };
 
 var createTestRun = function(instanceURL, filterData, next){
@@ -258,7 +256,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
     }
   } else {
     if(typeof util.v_asserts._[ass.type] === 'function'){
-      ret.passed = util.v_asserts._[ass.type](ops.ac,ops.ex);
+      ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
       ret.assertion.property = ass.property || '';
       ret.assertion.value = ass.value || '';
@@ -292,7 +290,7 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
   if(util.v_asserts.shouldAddProperty(ass.name)) {
     ass.property = util.searchAndReplaceString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
-  if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, { meta : publicConfiguration })) {
+  if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
     ass.value = util.searchAndReplaceString(ass.value, curVars, publicConfiguration);
   } else delete ass.value;
   switch(ass.name){
@@ -329,8 +327,8 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
 
 
 var setFinalExpContent = function(er,ar,curVars){
-  var toSet = false, opts = { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR, prefs : [{},''] };
-  if(util.isWithVars(er.content, opts)){
+  var toSet = false;
+  if(util.isWithVars(er.content, config.meta)){
     var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
     toSet = true;
     if(er.content === spclFl) {
@@ -341,17 +339,17 @@ var setFinalExpContent = function(er,ar,curVars){
         util.walkInto(function(valn, key, root){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
             var val = root[key], tmpKy = null;
-            if(util.isWithVars(key, opts) && key !== spcl){
-              tmpKy = util.searchAndReplaceString(key, curVars, opts);
+            if(util.isWithVars(key, config.meta) && key !== spcl){
+              tmpKy = util.searchAndReplaceString(key, curVars, config.meta);
               if(tmpKy !== key){
                 val = root[tmpKy] = root[key];
                 delete root[key];
               }
             }
             if(typeof val === 'string' && val && val !== spcl){
-              if(util.isWithVars(val, opts)){
-                var newValue = curVars[val.substring(opts.startVarExpr.length, val.length - opts.endVarExpr.length)];
-                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, opts);
+              if(util.isWithVars(val, config.meta)){
+                var newValue = curVars[val.substring(config.meta.startVarExpr.length, val.length - config.meta.endVarExpr.length)];
+                root[tmpKy || key] = newValue || util.searchAndReplaceString(val, curVars, config.meta);
               }
             }
           }
@@ -360,7 +358,7 @@ var setFinalExpContent = function(er,ar,curVars){
         er.content = util.stringify(exCont);
       }
     } else {
-      er.content = util.searchAndReplaceString(er.content, curVars, opts);
+      er.content = util.searchAndReplaceString(er.content, curVars, config.meta);
     }
   }
   return toSet;
@@ -468,7 +466,7 @@ function vRunner(opts){
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
   this.pendingTrtc = [];
   this.stopped = false;
-  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0;
+  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
   var self = this;
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
@@ -485,9 +483,9 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       total : report.total,
       passed : report.passed,
       failed: report.failed,
-      notExecuted: report.notExecuted
-    },
-    remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
+      notExecuted: report.notExecuted,
+      notRunnable: report.notRunnable
+    }, remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
                 : 'All test cases executed successfully.'
   }}, function(err,response,body){
     if(error) self.emit('end',error);
@@ -500,12 +498,13 @@ vRunner.prototype.kill = function(next){
   var self = this;
   self.sendToServer(self.instanceURL,'OVER',function(err){
     if(err) self.emit('warning',err);
-    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted);
+    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
     self.sendToServer(self.instanceURL,ne,function(err){
       if(err) self.emit('warning',err);
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,
-        { total : self.totalRecords, passed : self.noPassed, failed : self.noFailed, notExecuted : ne + self.noNotExecuted },
-      function(err){
+      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
+        total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
+        failed : self.noFailed, notExecuted : ne + self.noNotExecuted
+      }, function(err){
         if(err) self.emit('warning',err);
         self.emit('log',"\nTest Run Stopped.");
         process.exit(1);
@@ -552,17 +551,18 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
 };
 
 vRunner.prototype.run = function(next){
-  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0 };
+  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0 };
   var tasks = [
     function(cb){
       self.sigIn(cb);
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey){
+      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch){
         if(err) cb(err);
         else {
           if(projectKey) self.projectKey = projectKey;
+          findHelpers = findHelpers.bind(undefined,prefetch || {});
           cb();
         }
       });
@@ -581,11 +581,16 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      request(V_BASE_URL + 'public-configuration', function(err,res,body){
+      findHelpers(self, 'publicConfiguration', function(err,body){
         if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
           publicConfiguration = body;
+          publicConfiguration.startVarExpr = START_VAR_EXPR;
+          publicConfiguration.endVarExpr = END_VAR_EXPR;
           publicConfiguration.mongoIdRegex = MONGO_REGEX;
+          for(var ky in publicConfiguration){
+            config.meta[ky] = publicConfiguration[ky];
+          }
           cb();
         }
       });
@@ -602,7 +607,8 @@ vRunner.prototype.run = function(next){
               console.log(e);
             }
           });
-          publicConfiguration.prefetch = { responsevalidator : vals };
+          if(!publicConfiguration.prefetch) publicConfiguration.prefetch = {};
+          publicConfiguration.prefetch.responsevalidator = vals;
           setAssertionUtil(publicConfiguration);
           var ZSV = new zSchemaValidator({ breakOnFirstError: false });
           var sk = jsonSchemaFiles();
@@ -692,8 +698,13 @@ vRunner.prototype.run = function(next){
               self.emit('testcase',false,tc,trtc);
             }
           } else {
-            report.notExecuted++;
-            self.noNotExecuted++;
+            if(tc.runnable){
+              report.notExecuted++;
+              self.noNotExecuted++;
+            } else {
+              report.notRunnable++;
+              self.notRunnable++;
+            }
             self.emit('testcase',null,tc,trtc);
           }
           trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
