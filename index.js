@@ -268,7 +268,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
 };
 
 
-var extractVarsFrom = function(tc, result) {
+var extractVarsFrom = function(tc, result, headers) {
   if(result && result.resultType){
     var opts = { prefixes : ['',{}] }, jsonData = util.getJsonOrString(result.content), tp;
     var variables = ReplaceModule.getVars();
@@ -276,6 +276,7 @@ var extractVarsFrom = function(tc, result) {
       if(vr.name && vr.path){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
+          opts.prefixes[1].headers = headers;
           variables[vr.name] = ReplaceModule.replace(vr.path,opts);
         } else if(result.resultType === 'json') {
           variables[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
@@ -763,7 +764,7 @@ vRunner.prototype.run = function(next){
               isExecuted = true;
               var actualResults = getActualResults(result.response);
               trtc.result = actualResults;
-              extractVarsFrom(tc, actualResults);
+              extractVarsFrom(tc, actualResults, result.response.headers);
               trtc.variable = util.cloneObject(self.variables);
               isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
             }
