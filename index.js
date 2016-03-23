@@ -14,6 +14,7 @@ var request = require('request').defaults({jar: true, json: true}),
     jsonSchemaFiles = require('./lib/schemaFiles'),
     util = require('./lib/util'),
     runner = require('./lib/testRunner'),
+    replacingModule = require('./lib/replacingStrings'),
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit'],
     JSONPath = require('./lib/jsonpath'),
@@ -205,6 +206,8 @@ var getJSONPathValue = function(path, json, meta, tcVar){
   var ret = undefined, tp;
   if(typeof(json) != 'object') return ret;
   ret = JSONPath(json, path);
+
+  var variables = replacingModule.getVars();
 
   if(ret === 'V_PATH_NOT_RESOLVED') {
     tp = util.searchAndReplaceString(path, tcVar, { startVarExpr : meta.startVarExpr, endVarExpr : meta.endVarExpr });
