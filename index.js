@@ -860,7 +860,7 @@ vRunner.prototype.run = function(next){
               over();
             });
           } else {
-            tr.runnable = false;
+            tc.runnable = false;
             trtc.remarks = 'Test case condition was failed, so was not runnable.';
             over();
           }
