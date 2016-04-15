@@ -44,6 +44,91 @@ var request = require('request').defaults({jar: true, json: true}),
       meta : publicConfiguration
     };
 
+    var replacingString = ReplaceModule.replace;
+
+    /*
+     * replacing all the entities of test cases that need to be handled with variables
+     *
+     * @param {Object} tc - the test case
+     *
+     * @return {Object} tc - the modified test case, with all the variables replaced with corresponding values
+     * */
+    var processUtil = {
+      preProcessForSearchAndReplace: function(tc) {
+
+        var key, variables = ReplaceModule.getVars();
+
+        if(tc.params){
+          tc.params.forEach(function(v){
+            if(v.id){
+              v.value = replacingString(v.value || '');
+              if(v.method === 'path') {
+                //path variables will overwrite previously defined variables
+                variables[util.getModelVal(v, 'name')] = util.getModelVal(v, 'value');
+              }
+            }
+          });
+        }
+
+        return this.preProcessTestCase(tc);
+      },
+
+      searchAndReplaceString : function(str){
+        return replacingString(str);
+      },
+
+      configureVarCol : function(varCol){
+        //varCol: global variable collection
+        ReplaceModule.clearVars();
+        var variables = ReplaceModule.getVars(), key, vlu, tmp, typ;
+        for(var z=0, v = null, len = varCol.length;z<len;z++){
+          v = varCol[z];
+          if(v.id){
+            key = util.getModelVal(v, 'key');
+            vlu = replacingString(util.getModelVal(v,'value'));
+            typ = util.getModelVal(v,'varType');
+            if(typ !== 'string'){
+              try {
+                tmp = JSON.parse(vlu);
+              } catch(e){
+              }
+            }
+            if(typ === typeof tmp) {
+              vlu = tmp;
+            }
+            variables[key] = vlu;
+          }
+        }
+        return variables;
+      },
+
+      preProcessTestCase : function(tc) {
+        tc.url = replacingString(tc.url);
+
+        if(tc.headers){
+          tc.headers.forEach(function(header){
+            if(header.id){
+              header.value = replacingString(header.value || '');
+            }
+          });
+        }
+
+        // below line is already in assert. So no need here.
+        // if(tc.expectedResults) tc.expectedResults.content = replacingString(tc.expectedResults.content);
+        if(tc.raw && tc.raw.enabled && tc.raw.content) tc.raw.content = replacingString(tc.raw.content);
+        if(tc.condition) {
+          try {
+            tc.condition = Boolean(JSON.parse(replacingString(tc.condition)));
+          } catch(er){
+            tc.condition = true;
+          }
+        } else {
+          tc.condition = true;
+        }
+        return tc;
+      }
+    };
+
 var getInstanceName = function(url){
   var instanceName = null, prefixIndex = url.indexOf(ORG_URL_PREFIX), prefixLength = ORG_URL_PREFIX.length, index;
   if(prefixIndex > -1){
@@ -208,7 +293,7 @@ var getJSONPathValue = function(path, json){
   ret = JSONPath(json, path);
 
   if(ret === 'V_PATH_NOT_RESOLVED') {
-    tp = util.searchAndReplaceString(path);
+    tp = processUtil.searchAndReplaceString(path);
     if(tp !== path) ret = JSONPath(json, tp);
   }
   if(Array.isArray(ret) && ret.length === 1) return ret[0];
@@ -289,10 +374,10 @@ var extractVarsFrom = function(tc, result, headers) {
 
 var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
-    ass.property = util.searchAndReplaceString(ass.property, curVars, publicConfiguration);
+    ass.property = processUtil.searchAndReplaceString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
-    ass.value = util.searchAndReplaceString(ass.value, curVars, publicConfiguration);
+    ass.value = processUtil.searchAndReplaceString(ass.value, curVars, publicConfiguration);
   } else delete ass.value;
   switch(ass.name){
     case 'statusCode' :
@@ -341,7 +426,7 @@ var setFinalExpContent = function(er,ar,curVars){
           if(typeof root === 'object' && root && root.hasOwnProperty(key)){
             var val = root[key], tmpKy = null;
             if(util.isWithVars(key) && key !== spcl){
-              tmpKy = util.searchAndReplaceString(key, curVars, config.meta);
+              tmpKy = processUtil.searchAndReplaceString(key, curVars, config.meta);
               if(tmpKy !== key){
                 val = root[tmpKy] = root[key];
                 delete root[key];
@@ -349,7 +434,7 @@ var setFinalExpContent = function(er,ar,curVars){
             }
             if(typeof val === 'string' && val && val !== spcl){
               if(util.isWithVars(val)){
-                root[tmpKy || key] = util.searchAndReplaceString(val);
+                root[tmpKy || key] = processUtil.searchAndReplaceString(val);
               }
             }
           }
@@ -358,7 +443,7 @@ var setFinalExpContent = function(er,ar,curVars){
         er.content = util.stringify(exCont);
       }
     } else {
-      er.content = util.searchAndReplaceString(er.content);
+      er.content = processUtil.searchAndReplaceString(er.content);
     }
   }
   return toSet;
@@ -677,7 +762,7 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          self.variables = util.configureVarCol(vars, {
+          self.variables = processUtil.configureVarCol(vars, {
             selectedEnvironment : self.selectedEnvironment, startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
           cb();
         }
@@ -743,36 +828,42 @@ vRunner.prototype.run = function(next){
           });
         };
         if(tc.runnable){
-          tc = util.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
-          tc.url = util.completeURL(tc.url, tc.params);
-          if(tc.authorizationId){
-            if(typeof self.authorizations[tc.authorizationId] === 'function'){
-              tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
-            } else tc.authorizationHeader = self.authorizations[tc.authorizationId];
-          }
-          trtc.executionTime = new Date().getTime();
-          fireRequest(tc,trtc,function(result){
-            var isPassed = false, remarks = '', isExecuted = false;
-            if(result === undefined || result === null) {
-              remarks = 'An unknown error occurred while receiving response for the Test case.';
-            } else if(result.err) {
-              remarks = 'An error has occurred while executing this testcase. Error logged : '+JSON.stringify(result.err);
-            } else if(!result.response) {
-              isExecuted = true;
-              remarks = 'No response received for this test case.';
-            } else {
-              isExecuted = true;
-              var actualResults = getActualResults(result.response);
-              trtc.result = actualResults;
-              extractVarsFrom(tc, actualResults, result.response.headers);
-              trtc.variable = util.cloneObject(self.variables);
-              isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+          tc = processUtil.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
+          if(tc.condition) {
+            tc.url = util.completeURL(tc.url, tc.params);
+            if(tc.authorizationId){
+              if(typeof self.authorizations[tc.authorizationId] === 'function'){
+                tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
+              } else tc.authorizationHeader = self.authorizations[tc.authorizationId];
             }
-            if(!trtc.remarks) trtc.remarks = remarks;
-            trtc.isExecuted = isExecuted;
-            trtc.isPassed = (isPassed === true)?true:false;
+            trtc.executionTime = new Date().getTime();
+            fireRequest(tc,trtc,function(result){
+              var isPassed = false, remarks = '', isExecuted = false;
+              if(result === undefined || result === null) {
+                remarks = 'An unknown error occurred while receiving response for the Test case.';
+              } else if(result.err) {
+                remarks = 'An error has occurred while executing this testcase. Error logged : '+JSON.stringify(result.err);
+              } else if(!result.response) {
+                isExecuted = true;
+                remarks = 'No response received for this test case.';
+              } else {
+                isExecuted = true;
+                var actualResults = getActualResults(result.response);
+                trtc.result = actualResults;
+                extractVarsFrom(tc, actualResults, result.response.headers);
+                trtc.variable = util.cloneObject(self.variables);
+                isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+              }
+              if(!trtc.remarks) trtc.remarks = remarks;
+              trtc.isExecuted = isExecuted;
+              trtc.isPassed = (isPassed === true)?true:false;
+              over();
+            });
+          } else {
+            tr.runnable = false;
+            trtc.remarks = 'Test case condition was failed, so was not runnable.';
             over();
-          });
+          }
         } else {
           trtc.remarks = 'Test case was not runnable.';
           over();
