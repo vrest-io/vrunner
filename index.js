@@ -118,7 +118,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(tc.raw && tc.raw.enabled && tc.raw.content) tc.raw.content = replacingString(tc.raw.content);
         if(tc.condition) {
           try {
-            tc.condition = Boolean(JSON.parse(replacingString(tc.condition)));
+            tc.condition = JSON.parse(replacingString(tc.condition));
           } catch(er){
             tc.condition = true;
           }
@@ -861,6 +861,7 @@ vRunner.prototype.run = function(next){
             });
           } else {
             tc.runnable = false;
+            trtc.result.content = JSON.stringify(tc.condition);
             trtc.remarks = 'Test case condition was failed, so was not runnable.';
             over();
           }
