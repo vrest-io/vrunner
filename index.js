@@ -28,6 +28,7 @@ var request = require('request').defaults({jar: true, json: true}),
     END_VAR_EXPR = '}}',
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
+    tcFetched = 0,
     pages = [false],
     options = {
       credentials : {},
@@ -102,6 +103,36 @@ var request = require('request').defaults({jar: true, json: true}),
         return variables;
       },
 
+      tsParse : function(output, orderTestCases, mainIdField){
+        var cnt = output.length, ent;
+        for(var j= 0;j < cnt;j++){
+          delete output[j].testSuites;
+          delete output[j].sortNumber;
+          if(orderTestCases){
+            ent = orderTestCases[output[j].id];
+            if(Array.isArray(ent)){
+              ent.forEach(function(en,ind){
+                if(!ind){
+                  output[j].sortNumber = en.index;
+                  output[j].runnable = en.runnable;
+                  output[j][mainIdField] = output[j].id;
+                  output[j].id = en.entryId;
+                } else {
+                  var nw = util.cloneObject(output[j]);
+                  nw.id = en.entryId;
+                  nw.runnable = en.runnable;
+                  nw.sortNumber = en.index;
+                  output.push(nw);
+                }
+              });
+            }
+          } else {
+            output[j].sortNumber = output[j].uniqueId;
+          }
+        }
+        return output;
+      },
+
       preProcessTestCase : function(tc) {
         tc.url = replacingString(tc.url);
 
@@ -139,33 +170,62 @@ var getInstanceName = function(url){
   return String(instanceName);
 };
 
-var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
-  if(page===vrunner.totalPages) next();
-  else if(Array.isArray(pages[page])) {
-    afterFetch(pages[page], cb, function(err){
+var completePage = function(url, page, pageSize, cb, next, vrunner){
+  if(tcFetched === 0 || (tcFetched % pageSize !== 0)){
+    if(vrunner.allTS[(vrunner.tsi+1)]){
+      vrunner.tsi++;
+      fetchSinglePage(url, 0, pageSize, cb, next, vrunner, page);
+    }
+  }
+};
+
+var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner, addToPage){
+  var forPage = (typeof addToPage === 'number' ? addToPage : page);
+  if(typeof addToPage === 'number' && (!(vrunner.totalPages) || (page >= vrunner.totalPages))) return true;
+  if(forPage === vrunner.totalPages) next();
+  else if(Array.isArray(pages[forPage]) && (pages[forPage].length === pageSize || (vrunner.tsi === (vrunner.allTS.length)))) {
+    afterFetch(pages[forPage], cb, function(err){
       if(err) next(err);
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
     });
-    if(pages[page+1] === false) fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
-  } else if(typeof pages[page] === 'string') next(pages[page]);
-  else if(pages[page] === false) {
-    pages[page] = true;
-    request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || body.error) pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
-      else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
-        pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      else if(!page){
-        oneTimeCache(vrunner,body.output,body.total);
-        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
-        vrunner.on('new_page', function(npage){
-          if(vrunner.pageLoading){
-            fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
-            vrunner.pageLoading = false;
-          }
-        });
+    if(pages[forPage+1] === false) fetchSinglePage(url, forPage+1, pageSize, cb, next, vrunner);
+  } else if(typeof pages[forPage] === 'string') next(pages[forPage]);
+  else if(pages[forPage] === false || (typeof addToPage === 'number')) {
+    if(typeof addToPage !== 'number') pages[forPage] = true;
+    request(url+'&testSuiteIds[]='+vrunner.allTS[vrunner.tsi]+'&pageSize='+pageSize+'&currentPage='+page, function(err, res, body){
+      if(err || body.error) {
+        pages[forPage] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
       } else {
-        pages[page] = body.output;
-        vrunner.emit('new_page', page);
+        if(!page && !vrunner.tsi){
+          vrunner.emit("log", "Executing test cases ... (Please wait, it may take some time.)");
+          vrunner.on('new_page', function(npage){
+            if(vrunner.pageLoading){
+              fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
+              vrunner.pageLoading = false;
+            }
+          });
+        }
+        var res = (processUtil.tsParse(body.output, body.orderTestCases, 'originalId')).sort(function(a,b){
+          return a.sortNumber - b.sortNumber;
+        });
+        if(pages[forPage] === true){
+          pages[forPage] = [];
+        }
+        if((pages[forPage].length + res.length) <= pageSize){
+          pages[forPage] = pages[forPage].concat(res);
+          tcFetched += res.length;
+        } else {
+          var lef = (pageSize - pages[forPage].length);
+          pages[forPage] = pages[forPage].concat(res.slice(0,lef));
+          pages[forPage+1] = res.slice(lef);
+          tcFetched += res.length;
+        }
+        if(tcFetched === vrunner.totalRecords){
+          vrunner.tsi++;
+          fetchSinglePage(url,page,pageSize,cb,next,vrunner);
+        } else {
+          completePage(url, forPage, pageSize, cb, next, vrunner);
+        }
       }
     });
   } else {
@@ -178,14 +238,9 @@ var afterFetch = function(body, cb, next){
   util.recForEach({ ar : body, ec : cb, finishOnError : true, cb : next });
 };
 
-var oneTimeCache = function(vrunner,records,total){
+var oneTimeCache = function(vrunner,records){
   vrunner.emit("log", "Executing test cases ... (Please wait, it may take some time.)");
-  vrunner.totalRecords = total;
-  vrunner.totalPages = Math.ceil(total/vrunner.pageSize);
   pages[0] = records;
-  for(var z=1;z<vrunner.totalPages;z++){
-    pages[z] = false;
-  }
 };
 
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
@@ -213,13 +268,10 @@ var findHelpers = function(prefetch, vrunner, what, next){
 };
 
 var createTestRun = function(instanceURL, filterData, next){
-  var filters = filterData;
-  filters.currentPage = 0;
-  filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
-    body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
+    body: { name : util.getReadableDate(), projectId : true, filterData : filterData } }, function(err,res,body){
       if(err || body.error) next(['Error while creating test run : ',err||body]);
-      else next(null,body.output);
+      else next(null,body.output,body.total);
   });
 };
 
@@ -547,14 +599,22 @@ function vRunner(opts){
   if(typeof this.url !== 'string' || !this.url) throw new Error('vRunner : URL to fetch test cases not found.');
   queryObject = util.parseQuery(this.url);
   error = util.validateObj(queryObject, { projectId : { regex : MONGO_REGEX } });
+  this.allTS = queryObject['testSuiteIds[]'];
+  if(!Array.isArray(this.allTS) && MONGO_REGEX.test(this.allTS)) this.allTS = [this.allTS];
+  if(!Array.isArray(this.allTS) || !this.allTS.length){
+    throw new Error('vRUNNER : At least one test suite must be provided for test run.');
+  }
+  this.tsi = 0;
+  this.indTS = {};
+  this.prevTS = null;
   if(error) throw new Error('vRunner : INVALID_QUERY_STRING : ' + error);
   if(queryObject.hasOwnProperty('currentPage')) delete queryObject.currentPage;
   if(queryObject.hasOwnProperty('pageSize')) delete queryObject.pageSize;
-  this.url = util.beautifyURL(V_BASE_URL,this.url,queryObject);
   this.projectId = queryObject.projectId;
   this.filters = queryObject;
   this.instanceName = getInstanceName(this.url);
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
+  this.url = this.instanceURL + '/g/testcase?projectId='+this.projectId;
   this.pendingTrtc = [];
   this.stopped = false;
   this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
@@ -583,6 +643,24 @@ var getRemarks = function(total, passed, failed, notExecuted, notRunnable){
     }
   } else rem = 'No test case found to be executed.';
   return rem;
+};
+
+vRunner.prototype.initAll = function(total){
+  this.exTS = {};
+  this.totalRecords = total;
+  this.totalPages = Math.ceil(total/this.pageSize);
+  for(var z=0;z<this.totalPages;z++){
+    pages[z] = false;
+  }
+  var filters = util.cloneObject(this.filters);
+  filters.currentPage = 0;
+  filters.pageSize = 100;
+  filters.testSuiteIds = filters['testSuiteIds[]'];
+  delete filters['testSuiteIds[]'];
+  if(!Array.isArray(filters.testSuiteIds) && MONGO_REGEX.test(filters.testSuiteIds)){
+    filters.testSuiteIds = [filters.testSuiteIds];
+  }
+  this.filterDataToSend = filters;
 };
 
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
@@ -637,7 +715,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     if(count){
       toSend.count = count;
       toSend.testRunId = self.testRunId;
-      toSend.filterData = self.filters;
+      toSend.filterData = self.filterDataToSend;
     } else {
       toSend.list = self.pendingTrtc;
     }
@@ -770,10 +848,11 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Creating test run ...');
-      createTestRun(self.instanceURL,self.filters,function(err,testrun){
+      createTestRun(self.instanceURL,self.filterDataToSend,function(err,testrun,total){
         if(err) cb(err, 'VRUN_OVER');
         else {
           console.log('INFO => Test run name : '+testrun.name);
+          self.initAll(total);
           self.testRunId = testrun.id;
           cb();
         }
