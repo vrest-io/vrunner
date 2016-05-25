@@ -728,8 +728,8 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
     else next(null);
-  } else if(trtc === 'STOPPED'){
-    sendNow();
+  } else if(typeof trtc === 'number'){
+    sendNow(trtc);
   } else {
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
@@ -848,6 +848,14 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Creating test run ...');
+      var filters = util.cloneObject(self.filters);
+      filters.pageSize = 100;
+      filters.testSuiteIds = filters['testSuiteIds[]'];
+      delete filters['testSuiteIds[]'];
+      if(!Array.isArray(filters.testSuiteIds) && MONGO_REGEX.test(filters.testSuiteIds)){
+        filters.testSuiteIds = [filters.testSuiteIds];
+      }
+      self.filterDataToSend = filters;
       createTestRun(self.instanceURL,self.filterDataToSend,function(err,testrun,total){
         if(err) cb(err, 'VRUN_OVER');
         else {
