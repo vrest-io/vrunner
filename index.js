@@ -647,6 +647,7 @@ vRunner.prototype.run = function(next){
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
         if(err) cb(err, 'VRUN_OVER');
         else {
+          self.testRunName = testrun.name;
           self.testRunId = testrun.id;
           cb();
         }
