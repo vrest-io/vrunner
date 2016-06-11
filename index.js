@@ -861,6 +861,7 @@ vRunner.prototype.run = function(next){
         else {
           console.log('INFO => Test run name : '+testrun.name);
           self.initAll(total);
+          self.testRunName = testrun.name;
           self.testRunId = testrun.id;
           cb();
         }
