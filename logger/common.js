@@ -45,8 +45,11 @@ module.exports = function(args){
       args.testcaseLogger(prefix + callChalk(['green','bold'],tc.summary || tc.url) + ' (' + trtc.executionTime + 'ms) ', tc, trtc);
     } else if(pass === false){
       args.testcaseLogger(prefix + callChalk(['red','bold'],tc.summary || tc.url) + ' (' + trtc.executionTime + 'ms) ', tc, trtc);
-    } else {
+    } else if(tc.runnable) {
       args.testcaseLogger(prefix + callChalk(['cyan','bold'],'[Not Executed] ' + (tc.summary || tc.url)) +
+        ' (' + trtc.executionTime + 'ms) ', tc, trtc);
+    } else {
+      args.testcaseLogger(prefix + callChalk(['cyan','bold'],'[Not Runnable] ' + (tc.summary || tc.url)) +
         ' (' + trtc.executionTime + 'ms) ', tc, trtc);
     }
   });
