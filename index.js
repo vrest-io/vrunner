@@ -253,7 +253,7 @@ var hasRunPermission = function(instance, project, next){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project, body.output.prefetch);
+    else next(null,body.output.project, body.output.prefetch, body.output.projectuser);
   });
 };
 
@@ -747,9 +747,10 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch){
+      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch, proju){
         if(err) cb(err);
         else {
+          self.stopUponFirstFailureInTestRun = Boolean(proju.action && proju.action.stopUponFirstFailureInTestRun);
           if(projectKey) self.projectKey = projectKey;
           findHelpers = findHelpers.bind(undefined,prefetch || {});
           cb();
@@ -944,6 +945,10 @@ vRunner.prototype.run = function(next){
                 trtc.variable = util.cloneObject(self.variables);
                 isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
               }
+              if(!isPassed || (tc.runnable && !isExecuted)){
+                self.stopped = true;
+              }
+
               if(!trtc.remarks) trtc.remarks = remarks;
               trtc.isExecuted = isExecuted;
               trtc.isPassed = (isPassed === true)?true:false;
