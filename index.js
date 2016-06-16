@@ -945,7 +945,7 @@ vRunner.prototype.run = function(next){
                 trtc.variable = util.cloneObject(self.variables);
                 isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
               }
-              if(!isPassed || (tc.runnable && !isExecuted)){
+              if(self.stopUponFirstFailureInTestRun && (!isPassed || (tc.runnable && !isExecuted))){
                 self.stopped = true;
               }
 
