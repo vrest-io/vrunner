@@ -558,9 +558,11 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err || (body && body.error) || !body) next(err||body||'Connection could not be established to save the execution results.');
-      else next(null);
+      if(err || (body && body.error) || !body) {
+        self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+      }
     });
+    next(null);
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
@@ -688,6 +690,7 @@ vRunner.prototype.run = function(next){
       createTestRun(self.instanceURL,self.filters,function(err,testrun){
         if(err) cb(err, 'VRUN_OVER');
         else {
+          self.testRunName = testrun.name;
           console.log('INFO => Test run name : '+testrun.name);
           self.testRunId = testrun.id;
           cb();
