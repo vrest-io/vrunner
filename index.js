@@ -277,6 +277,7 @@ var extractVarsFrom = function(tc, result, headers) {
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
           opts.prefixes[1].headers = headers;
+          opts.prefixes[1].statusCode = result.statusCode;
           variables[vr.name] = ReplaceModule.replace(vr.path,opts);
         } else if(result.resultType === 'json') {
           variables[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
