@@ -545,13 +545,14 @@ function vRunner(opts){
   queryObject = util.parseQuery(this.url);
   error = util.validateObj(queryObject, { projectId : { regex : MONGO_REGEX } });
   if(error) throw new Error('vRunner : INVALID_QUERY_STRING : ' + error);
-  if(queryObject.hasOwnProperty('currentPage')) delete queryObject.currentPage;
-  if(queryObject.hasOwnProperty('pageSize')) delete queryObject.pageSize;
+  delete queryObject.currentPage;
+  delete queryObject.pageSize;
+  delete queryObject.saveFilter;
   this.projectId = queryObject.projectId;
   this.filters = queryObject;
   this.instanceName = getInstanceName(this.url);
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
-  this.url = this.instanceURL + '/g/testcase?projectId='+this.projectId;
+  this.url = util.completeURL(this.instanceURL + '/g/testcase', queryObject);
   this.pendingTrtc = [];
   this.stopped = false;
   this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
