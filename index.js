@@ -194,7 +194,7 @@ var hasRunPermission = function(instance, project, next){
     if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project, body.output.prefetch);
+    else next(null,body.output.project, body.output.prefetch, body.output.projectuser);
   });
 };
 
