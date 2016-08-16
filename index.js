@@ -91,13 +91,13 @@ var request = require('request').defaults({jar: true, json: true}),
         return replacingString(str);
       },
 
-      configureVarCol : function(varCol){
+      configureVarCol : function(varCol,opt){
         //varCol: global variable collection
         ReplaceModule.clearVars();
         var key, vlu, tmp, typ;
         for(var z=0, v = null, len = varCol.length;z<len;z++){
           v = varCol[z];
-          if(v.id){
+          if(v.id && (v.projEnvId === opt.selectedEnvironment)){
             key = util.getModelVal(v, 'key');
             vlu = replacingString(util.getModelVal(v,'value'));
             typ = util.getModelVal(v,'varType');
@@ -287,8 +287,7 @@ var afterFetch = function(st, en, cb, next, vrunner){
       if(typeof nIndex === 'number'){
         index = nIndex;
       }
-      processUtil.extractPathVars(MAIN_COLLECTION[index].params);
-      cb(MAIN_COLLECTION[index].getTcToExecute(), function(){
+      cb(MAIN_COLLECTION[index], function(){
         forEachTc(index+1);
       });
     } else {
@@ -378,7 +377,10 @@ var fireRequest = function(tc, trtc, callback){
       if(!result || result.err) {
         //console.log(result);
       }
-      if(result.runnerCase) trtc.runnerCase = result.runnerCase;
+      if(result.runnerCase) {
+        trtc.runnerCase = result.runnerCase;
+        trtc.runnerCase.headers = util.stringify(result.runnerCase.headers, true);
+      }
       callback(result);
     };
     trtc.executionTime = new Date().getTime() - trtc.executionTime;
@@ -475,19 +477,18 @@ var assert = function(validatorIdCodeMap, ass, ops){
 };
 
 
-var extractVarsFrom = function(tc, result, headers) {
+var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
     var opts = { prefixes : ['',{}] }, jsonData = util.getJsonOrString(result.content), tp;
-    var variables = ReplaceModule.getVars();
-    tc.tcVariables.forEach(function(vr){
+    (tcVariables || []).forEach(function(vr){
       if(vr.name && vr.path){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
           opts.prefixes[1].headers = headers;
           opts.prefixes[1].statusCode = result.statusCode;
-          variables[vr.name] = ReplaceModule.replace(vr.path,opts);
+          VARS[vr.name] = ReplaceModule.replace(vr.path,opts);
         } else if(result.resultType === 'json') {
-          variables[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
+          VARS[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
         }
       }
     });
@@ -524,14 +525,15 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
 
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
-  var actualResults = runnerModel.result, curVars = runnerModel.variable,
-    toSendTC = (typeof tc.toJSON == 'function') ? tc.toJSON() : tc, toSendTRTC = { headers : headersMap },
+  var actualResults = runnerModel.result,
+    toSendTC = _.extend(runnerModel.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
-  var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
+  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
-  if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+  runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
@@ -617,7 +619,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
       findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
-  tc.assertions.forEach(function(ass){
+  (tc.getTc('assertions',true) || []).forEach(function(ass){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
@@ -948,8 +950,7 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          self.variables = processUtil.configureVarCol(vars, {
-            selectedEnvironment : self.selectedEnvironment, startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
+          processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment });
           cb();
         }
       });
@@ -1009,52 +1010,61 @@ vRunner.prototype.run = function(next){
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
             }
-            if(self.stopped){
-              self.kill();
-            }
             else cb0();
           });
         };
-        if(tc.runnable){
-          tc = processUtil.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
-          if(tc.condition) {
-            tc.url = util.completeURL(tc.url, tc.params);
-            trtc.executionTime = new Date().getTime();
-            fireRequest(tc,trtc,function(result){
-              var isPassed = false, remarks = '', isExecuted = false;
-              if(result === undefined || result === null) {
-                remarks = 'An unknown error occurred while receiving response for the Test case.';
-              } else if(result.err) {
-                remarks = 'An error has occurred while executing this testcase. Error logged : '+JSON.stringify(result.err);
-              } else if(!result.response) {
-                isExecuted = true;
-                remarks = 'No response received for this test case.';
-              } else {
-                isExecuted = true;
-                var actualResults = getActualResults(result.response);
-                trtc.result = actualResults;
-                extractVarsFrom(tc, actualResults, result.response.headers);
-                trtc.variable = util.cloneObject(self.variables);
-                isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-              }
-              if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
-                self.stopped = true;
-              }
+        var handleAPIResponse = function(result, err, notRunnable){
+          var isPassed = false, remarks = '', isExecuted = false;
 
-              if(!trtc.remarks) trtc.remarks = remarks;
-              trtc.isExecuted = isExecuted;
-              trtc.isPassed = (isPassed === true)?true:false;
-              over();
-            });
+          if(!result) {
+            remarks = 'Test run was stopped by user.';
+          } else if(notRunnable) {
+            if(typeof notRunnable === 'string'){
+              trtc.result.content = notRunnable;
+              remarks = 'Test case condition was failed, so was not runnable.';
+            } else {
+              remarks = 'Test case was not runnable.';
+            }
+          } else if(result === undefined || result === null) {
+            remarks = 'An unknown error occurred while receiving response for the Test case.';
+          } else if(err) {
+            remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
           } else {
-            tc.runnable = false;
-            trtc.result.content = JSON.stringify(tc.condition);
-            trtc.remarks = 'Test case condition was failed, so was not runnable.';
-            over();
+            isExecuted = true;
+            var actualResults = getActualResults(result.response);
+            trtc.result = actualResults;
+            extractVarsFrom(tc, actualResults, result.response.headers);
+            isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
           }
-        } else {
-          trtc.remarks = 'Test case was not runnable.';
+          isPassed = isPassed === true;
+          if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
+            self.stopped = true;
+          }
+          if(!trtc.remarks) trtc.remarks = remarks;
+          trtc.isExecuted = isExecuted;
+          trtc.isPassed = isPassed;
           over();
+        };
+        var forNotRunnable = function(cond){
+          self.handleAPIResponse(null, null, cond || true);
+        };
+        if(tc.getTc('runnable') === false){
+          forNotRunnable();
+        } else {
+          processUtil.extractPathVars(tc.params);
+          if(tc.shouldRun()){
+            trtc.executionTime = new Date().getTime();
+            var afterWait = function(){
+              fireRequest(tc.getTcToExecute(),trtc,function(result){
+                handleAPIResponse(result.response, result.err);
+              });
+            };
+            var wf = tc.getTc('waitFor');
+            if(wf) setTimeout(afterWait, wf*1000);
+            else afterWait();
+          } else {
+            forNotRunnable(tc.currentCondition);
+          }
         }
       },cb, self);
     }
