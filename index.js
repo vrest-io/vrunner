@@ -29,6 +29,26 @@ var request = require('request').defaults({jar: true, json: true}),
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     pages = [false],
+    MAIN_AUTHORIZATIONS = {},
+    MAIN_COLLECTION = [],
+    _ = {
+      extend : function(target) {
+        if (target == null) { target = {}; }
+        target = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+          var source = arguments[index];
+          if (source != null) {
+            for (var key in source) {
+              if (Object.prototype.hasOwnProperty.call(source, key)) {
+                target[key] = source[key];
+              }
+            }
+          }
+        }
+        return target;
+      }
+    },
+    LOOPS = [],
     options = {
       credentials : {},
       logger : 'console',
@@ -44,7 +64,8 @@ var request = require('request').defaults({jar: true, json: true}),
       meta : publicConfiguration
     };
 
-    var replacingString = ReplaceModule.replace;
+    var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
+    VARS.$ = 0;
 
     /*
      * replacing all the entities of test cases that need to be handled with variables
@@ -54,23 +75,16 @@ var request = require('request').defaults({jar: true, json: true}),
      * @return {Object} tc - the modified test case, with all the variables replaced with corresponding values
      * */
     var processUtil = {
-      preProcessForSearchAndReplace: function(tc) {
-
-        var key, variables = ReplaceModule.getVars();
-
-        if(tc.params){
-          tc.params.forEach(function(v){
-            if(v.id){
-              v.value = replacingString(v.value || '');
-              if(v.method === 'path') {
-                //path variables will overwrite previously defined variables
-                variables[util.getModelVal(v, 'name')] = util.getModelVal(v, 'value');
-              }
+      extractPathVars: function(params) {
+        if(Array.isArray(params)){
+          params.forEach(function(v){
+            var ky = util.getModelVal(v, 'name');
+            if(v.id && ky && v.method === 'path') {
+              //path variables will overwrite previously defined variables
+              VARS[replacingString(ky)] = replacingString(util.getModelVal(v, 'value') || '');
             }
           });
         }
-
-        return this.preProcessTestCase(tc);
       },
 
       searchAndReplaceString : function(str){
@@ -80,7 +94,7 @@ var request = require('request').defaults({jar: true, json: true}),
       configureVarCol : function(varCol){
         //varCol: global variable collection
         ReplaceModule.clearVars();
-        var variables = ReplaceModule.getVars(), key, vlu, tmp, typ;
+        var key, vlu, tmp, typ;
         for(var z=0, v = null, len = varCol.length;z<len;z++){
           v = varCol[z];
           if(v.id){
@@ -96,38 +110,113 @@ var request = require('request').defaults({jar: true, json: true}),
             if(typ === typeof tmp) {
               vlu = tmp;
             }
-            variables[key] = vlu;
+            VARS[key] = vlu;
           }
         }
-        return variables;
+        return VARS;
       },
 
-      preProcessTestCase : function(tc) {
-        tc.url = replacingString(tc.url);
+      setupHeaderInTc = function(tc){
+        var setHeaderFromRaw = false;
 
+        if(tc.raw && tc.raw.enabled && tc.raw.content) {
+          setHeaderFromRaw = tc.raw.resultType;
+        }
         if(tc.headers){
           tc.headers.forEach(function(header){
-            if(header.id){
-              header.value = replacingString(header.value || '');
+            if(header.id && header.name && header.name.toLowerCase() === 'content-type'){
+              setHeaderFromRaw = false;
             }
           });
         }
-
-        // below line is already in assert. So no need here.
-        // if(tc.expectedResults) tc.expectedResults.content = replacingString(tc.expectedResults.content);
-        if(tc.raw && tc.raw.enabled && tc.raw.content) tc.raw.content = replacingString(tc.raw.content);
-        if(tc.condition) {
-          try {
-            tc.condition = JSON.parse(replacingString(tc.condition));
-          } catch(er){
-            tc.condition = true;
+        if(setHeaderFromRaw === 'json' || setHeaderFromRaw === 'xml'){
+          if(!Array.isArray(tc.headers)){
+            tc.headers = [];
           }
-        } else {
-          tc.condition = true;
+          tc.headers.push({ id : 'VREST_CNT_HEADER', name : 'Content-Type', value : 'application/'+setHeaderFromRaw });
         }
         return tc;
       }
     };
+
+function RunnerModel(ob){
+  var self = this;
+  Object.keys(ob).forEach(function(ky){
+    if(ob.hasOwnProperty(ky)){
+      self[ky] = ob[ky];
+    }
+  });
+};
+
+RunnerModel.prototype = {
+  getTc : function(prop, withReplace){
+    if(prop) {
+      var forArray = function(sr){
+        var ar = [];
+        if(Array.isArray(sr)){
+          var ln = sr.length;
+          for(var k = 0; k < ln; k++){
+            ar.push(_.extend({},sr[k]));
+            if(withReplace){
+              if(prop !== 'assertions' && ar[k].hasOwnProperty('name')){
+                ar[k].name = ReplaceModule.replace(ar[k].name);
+              }
+              if(ar[k].hasOwnProperty('value')){
+                ar[k].value = ReplaceModule.replace(ar[k].value);
+              }
+            }
+          }
+        }
+        return ar;
+      };
+      var vl = this[prop];
+      if(['raw','expectedResults'].indexOf(prop) !== -1){
+        var ret = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
+        if(ret.hasOwnProperty('content') && withReplace){
+          ret.content = ReplaceModule.replace(ret.content);
+        }
+      }
+      if(['headers','params','assertions'].indexOf(prop) !== -1){
+        return forArray(vl);
+      }
+      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(vl) : vl;
+    }
+  },
+
+  getTcToExecute : function(){
+    var ret = {
+      method: this.getTc('method'),
+      url : this.getTc('url',true),
+      raw: this.getTc('raw',true),
+      headers: this.getTc('headers',true),
+      params: this.getTc('params',true),
+      id : this.getTc('id')
+    };
+    ret.url = util.completeURL(ret.url, ret.params);
+    var authId = this.getTc('authorizationId');
+    if(authId){
+      ret.authorizationHeader = resolveAuthorization(authId);
+    }
+    this.lastSend = ret;
+    return ret;
+  },
+
+  shouldRun : function(){
+    var mk = this.getTc('condition',true);
+    this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
+    if(typeof mk === 'string'){
+      try {
+        return Boolean(JSON.parse(mk));
+      } catch(er){
+        return true;
+      }
+    } else if(mk !== undefined && mk !== null){
+      return Boolean(mk);
+    } else {
+      return true;
+    }
+  }
+};
 
 var getInstanceName = function(url){
   var instanceName = null, prefixIndex = url.indexOf(ORG_URL_PREFIX), prefixLength = ORG_URL_PREFIX.length, index;
@@ -141,11 +230,11 @@ var getInstanceName = function(url){
 
 var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   if(page===vrunner.totalPages) next();
-  else if(Array.isArray(pages[page])) {
-    afterFetch(pages[page], cb, function(err){
+  else if(typeof pages[page] === 'number') {
+    afterFetch((pages[page-1] || 0), pages[page], cb, function(err){
       if(err) next(err);
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
-    });
+    }, vrunner);
     if(pages[page+1] === false) fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
   } else if(typeof pages[page] === 'string') next(pages[page]);
   else if(pages[page] === false) {
@@ -154,18 +243,27 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
       if(err || body.error) pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
       else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      else if(!page){
-        oneTimeCache(vrunner,body.output,body.total);
-        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
-        vrunner.on('new_page', function(npage){
-          if(vrunner.pageLoading){
-            fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
-            vrunner.pageLoading = false;
+      else if(Array.isArray(body.output)){
+        var ln = body.output.length;
+        for(var n =0;n<ln;n++){
+          MAIN_COLLECTION.push(new RunnerModel(processUtil.setupHeaderInTc(body.output[n])));
+        }
+        if(!page){
+          if(Array.isArray(body.loops)){
+            LOOPS = body.loops;
           }
-        });
-      } else {
-        pages[page] = body.output;
-        vrunner.emit('new_page', page);
+          oneTimeCache(vrunner,body.output,body.total);
+          fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+          vrunner.on('new_page', function(npage){
+            if(vrunner.pageLoading){
+              fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
+              vrunner.pageLoading = false;
+            }
+          });
+        } else {
+          pages[page] = ln;
+          vrunner.emit('new_page', page);
+        }
       }
     });
   } else {
@@ -174,8 +272,30 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   }
 };
 
-var afterFetch = function(body, cb, next){
-  util.recForEach({ ar : body, ec : cb, finishOnError : true, cb : next });
+var findLastTcWithId = function(currentIndex, findWithId){
+  for(var z = currentIndex;z>=0;z--){
+    if(MAIN_COLLECTION[z].id === findWithId){
+      return z;
+    }
+  }
+};
+
+var afterFetch = function(st, en, cb, next, vrunner){
+  var forEachTc = function(index){
+    if(index < en && index < MAIN_COLLECTION.length){
+      var nIndex = vrunner.setupLoopAlgo(index);
+      if(typeof nIndex === 'number'){
+        index = nIndex;
+      }
+      processUtil.extractPathVars(MAIN_COLLECTION[index].params);
+      cb(MAIN_COLLECTION[index].getTcToExecute(), function(){
+        forEachTc(index+1);
+      });
+    } else {
+      next();
+    }
+  };
+  forEachTc(st);
 };
 
 var oneTimeCache = function(vrunner,records,total){
@@ -243,6 +363,12 @@ var getAuthHeader = function(ath){
     };
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
+  }
+}, resolveAuthorization = function(authorizationId){
+  if(typeof MAIN_AUTHORIZATIONS[authorizationId] === 'function'){
+    return MAIN_AUTHORIZATIONS[authorizationId](tc);
+  } else {
+    return MAIN_AUTHORIZATIONS[authorizationId];
   }
 };
 
@@ -525,7 +651,11 @@ function vRunner(opts){
   }
   var dk, error, queryObject;
   for(dk in options){
-    this[dk] = options[dk];
+    if(dk === 'authorizations'){
+      MAIN_AUTHORIZATIONS = options[dk];
+    } else {
+      this[dk] = options[dk];
+    }
   }
   if(util.isObject(opts)){
     for(dk in opts){
@@ -563,7 +693,54 @@ function vRunner(opts){
   });
 };
 
+var setupLoopAlgo = function(runModelIndex){
+  var runModel = MAIN_COLLECTION[runModelIndex];
+  if(runModel){
+    var tsId = runModel.testSuiteId;
+    var lp = LOOPS.filter(function(lp){ return lp.endTCId === runModel.id && lp.testSuiteId === tsId; })[0];
+    if(lp){
+      var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
+      if(typeof nIndex === 'number'){
+        var stMod = MAIN_COLLECTION[nIndex];
+        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex < runModelIndex && this.shouldLoop(lp)){
+          this.totalRecords = this.totalRecords + runModelIndex - nIndex;
+          (VARS.$)++;
+          return nIndex;
+        }
+      }
+    }
+  }
+};
+
+var shouldLoop : function(lp){
+  if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
+    var src = processUtil.searchAndReplaceString(lp.source);
+    var nm = Math.floor(src);
+    if(isNaN(nm)){
+      try {
+        if(typeof src === 'string'){
+          src = JSON.parse(src);
+        }
+        lp.maxCount = Array.isArray(src) ? src.length : 0;
+      } catch(err){
+        lp.maxCount = 0;
+      }
+    } else {
+      lp.maxCount = nm;
+    }
+  }
+  if(lp.maxCount > ((VARS.$)+1)){
+    return true;
+  } else {
+    VARS.$ = 0;
+    return false;
+  }
+};
+
 vRunner.prototype = new events.EventEmitter;
+
+vRunner.prototype.shouldLoop = shouldLoop;
+vRunner.prototype.setupLoopAlgo = setupLoopAlgo;
 
 var getRemarks = function(total, passed, failed, notExecuted, notRunnable){
   var rem = '';
@@ -691,7 +868,7 @@ vRunner.prototype.run = function(next){
         else {
           if(Array.isArray(auths)){
             for(var k=0;k<auths.length;k++){
-              self.authorizations[auths[k].id] = getAuthHeader(auths[k]);
+              MAIN_AUTHORIZATIONS[auths[k].id] = getAuthHeader(auths[k]);
             }
           }
           cb();
@@ -800,6 +977,7 @@ vRunner.prototype.run = function(next){
           },
           isExecuted: false,
           testRunId : self.testRunId,
+          loopIndex : VARS.$,
           testCaseId : tc.id,
           executionTime: 0
         };
@@ -841,11 +1019,6 @@ vRunner.prototype.run = function(next){
           tc = processUtil.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
           if(tc.condition) {
             tc.url = util.completeURL(tc.url, tc.params);
-            if(tc.authorizationId){
-              if(typeof self.authorizations[tc.authorizationId] === 'function'){
-                tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
-              } else tc.authorizationHeader = self.authorizations[tc.authorizationId];
-            }
             trtc.executionTime = new Date().getTime();
             fireRequest(tc,trtc,function(result){
               var isPassed = false, remarks = '', isExecuted = false;
