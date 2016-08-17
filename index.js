@@ -116,7 +116,7 @@ var request = require('request').defaults({jar: true, json: true}),
         return VARS;
       },
 
-      setupHeaderInTc = function(tc){
+      setupHeaderInTc : function(tc){
         var setHeaderFromRaw = false;
 
         if(tc.raw && tc.raw.enabled && tc.raw.content) {
@@ -260,10 +260,11 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
               vrunner.pageLoading = false;
             }
           });
-        } else {
-          pages[page] = ln;
-          vrunner.emit('new_page', page);
         }
+        pages[page] = ln;
+        vrunner.emit('new_page', page);
+      } else {
+        next('Test cases not found.');
       }
     });
   } else {
@@ -714,7 +715,7 @@ var setupLoopAlgo = function(runModelIndex){
   }
 };
 
-var shouldLoop : function(lp){
+var shouldLoop = function(lp){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
     var src = processUtil.searchAndReplaceString(lp.source);
     var nm = Math.floor(src);
@@ -1031,9 +1032,9 @@ vRunner.prototype.run = function(next){
             remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
           } else {
             isExecuted = true;
-            var actualResults = getActualResults(result.response);
+            var actualResults = getActualResults(result);
             trtc.result = actualResults;
-            extractVarsFrom(tc, actualResults, result.response.headers);
+            extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
             isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
           }
           isPassed = isPassed === true;
