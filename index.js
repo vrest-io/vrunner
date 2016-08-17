@@ -283,13 +283,10 @@ var findLastTcWithId = function(currentIndex, findWithId){
 
 var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
-    if(index < en && index < MAIN_COLLECTION.length){
-      var nIndex = vrunner.setupLoopAlgo(index);
-      if(typeof nIndex === 'number'){
-        index = nIndex;
-      }
+    if(index < en && index < vrunner.totalRecords){
       cb(MAIN_COLLECTION[index], function(){
-        forEachTc(index+1);
+        var nIndex = vrunner.setupLoopAlgo(index);
+        forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
       });
     } else {
       next();
@@ -705,8 +702,8 @@ var setupLoopAlgo = function(runModelIndex){
       var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
       if(typeof nIndex === 'number'){
         var stMod = MAIN_COLLECTION[nIndex];
-        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex < runModelIndex && this.shouldLoop(lp)){
-          this.totalRecords = this.totalRecords + runModelIndex - nIndex;
+        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && this.shouldLoop(lp)){
+          this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
           (VARS.$)++;
           return nIndex;
         }
