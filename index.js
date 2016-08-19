@@ -206,7 +206,7 @@ RunnerModel.prototype = {
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
     if(typeof mk === 'string'){
       try {
-        return Boolean(JSON.parse(mk));
+        return Boolean(eval(mk));
       } catch(er){
         return true;
       }
