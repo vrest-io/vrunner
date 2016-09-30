@@ -16,7 +16,7 @@ var request = require('request').defaults({jar: true, json: true}),
     runner = require('./lib/testRunner'),
     ReplaceModule = require('./lib/replacingStrings'),
     OAuth1 = require('./lib/oauth-1_0'),
-    loggers = ['console','json','xunit'],
+    loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
     V_BASE_URL = 'https://vrest.io/',
@@ -537,6 +537,7 @@ function vRunner(opts){
     this.filePath = process.env.PWD+'/vrest_logs/logs';
     if(this.logger === 'json') this.filePath += '.json';
     else if(this.logger === 'xunit') this.filePath += '.xml';
+    else if(this.logger === 'csv') this.filePath += '.csv';
   }
   this.logger = require('./logger/'+this.logger)({ runner : this });
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
