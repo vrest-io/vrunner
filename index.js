@@ -16,7 +16,7 @@ var request = require('request').defaults({jar: true, json: true}),
     runner = require('./lib/testRunner'),
     ReplaceModule = require('./lib/replacingStrings'),
     OAuth1 = require('./lib/oauth-1_0'),
-    loggers = ['console','json','xunit'],
+    loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
     V_BASE_URL = 'https://vrest.io/',
@@ -56,12 +56,20 @@ var request = require('request').defaults({jar: true, json: true}),
     var processUtil = {
       preProcessForSearchAndReplace: function(tc) {
 
-        var key, variables = ReplaceModule.getVars();
+        var key, variables = ReplaceModule.getVars(), currVal;
 
         if(tc.params){
           tc.params.forEach(function(v){
             if(v.id){
-              v.value = replacingString(v.value || '');
+              currVal = replacingString(v.value);
+              if(v.paramType === 'string' && typeof currVal !== 'string'){
+                if(typeof currVal === 'object'){
+                  currVal = util.stringify(currVal);
+                } else {
+                  currVal = String(currVal);
+                }
+              }
+              v.value = currVal;
               if(v.method === 'path') {
                 //path variables will overwrite previously defined variables
                 variables[util.getModelVal(v, 'name')] = util.getModelVal(v, 'value');
@@ -71,6 +79,74 @@ var request = require('request').defaults({jar: true, json: true}),
         }
 
         return this.preProcessTestCase(tc);
+      },
+
+      getJsonOrString: function(str){
+        if(typeof str === 'string'){
+          try {
+            return JSON.parse(str);
+          } catch(err){
+            return str;
+          }
+        }
+        return str;
+      },
+
+      getReplacedStringifiedObject : function(obj,opt){
+        if(typeof opt !== 'object' || !opt){
+          opt = { spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr };
+        }
+        var spcl = opt.spcl;
+        if(obj){
+          var obj = processUtil.getJsonOrString(obj);
+          if(typeof obj === 'object'){
+            util.walkInto(function(valn, key, root){
+              if(typeof root === 'object' && root && root.hasOwnProperty(key)){
+                var val = root[key], tmpKy = null;
+                if(util.isWithVars(key) && key !== spcl){
+                  tmpKy = processUtil.searchAndReplaceString(key);
+                  if(tmpKy !== key){
+                    val = root[tmpKy] = root[key];
+                    delete root[key];
+                  }
+                }
+                if(typeof val === 'string' && val && val !== spcl){
+                  if(util.isWithVars(val)){
+                    root[tmpKy || key] = processUtil.searchAndReplaceString(val);
+                  }
+                }
+              }
+            }, null, obj);
+          }
+        }
+        if(opt.castInString && typeof obj !== 'string'){
+          if(typeof obj === 'object') return util.stringify(obj);
+          else return processUtil.searchAndReplaceString(String(obj));
+        } else {
+          return processUtil.searchAndReplaceString(obj);
+        }
+      },
+
+      completeURL: function(url, params) {
+        var s = '', i = 0,l, pm;
+        if(!params || typeof params !== 'object') return url;
+        var make = function(vl, i){
+          s += (((s)?'&':'?')) + i + '=' + (typeof (vl) === 'object' ? util.stringify(vl) : (vl || ''));
+        };
+        if(Array.isArray(params)){
+          for(i=0,l=params.length;i<l;i++){
+            pm = params[i];
+            if(pm.toJSON) pm = pm.toJSON();
+            if(pm.method == 'query' && pm.name && pm.name.length) {
+              make(pm.value, pm.name);
+            }
+          }
+        } else {
+          for(i in params){
+            make(params[i], i);
+          }
+        }
+        return url + (s || '');
       },
 
       searchAndReplaceString : function(str){
@@ -115,7 +191,9 @@ var request = require('request').defaults({jar: true, json: true}),
 
         // below line is already in assert. So no need here.
         // if(tc.expectedResults) tc.expectedResults.content = replacingString(tc.expectedResults.content);
-        if(tc.raw && tc.raw.enabled && tc.raw.content) tc.raw.content = replacingString(tc.raw.content);
+        if(tc.raw && tc.raw.enabled && tc.raw.content) {
+          tc.raw.content = processUtil.getReplacedStringifiedObject(tc.raw.content, { castInString : true });
+        }
         if(tc.condition) {
           try {
             tc.condition = JSON.parse(replacingString(tc.condition));
@@ -239,7 +317,7 @@ var getAuthHeader = function(ath){
   } else if(authType === 'oauth1.0'){
     return function(tc) {
       var params = util.extractParamters(tc.params);
-      new OAuth1(authConfig, tc.method, util.completeURL(tc.url, params.query)).getAuthHeader();
+      new OAuth1(authConfig, tc.method, processUtil.completeURL(tc.url, params.query)).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
@@ -351,7 +429,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
 
 var extractVarsFrom = function(tc, result, headers) {
   if(result && result.resultType){
-    var opts = { prefixes : ['',{}] }, jsonData = util.getJsonOrString(result.content), tp;
+    var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
     var variables = ReplaceModule.getVars();
     tc.tcVariables.forEach(function(vr){
       if(vr.name && vr.path){
@@ -401,7 +479,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   var actualResults = runnerModel.result, curVars = runnerModel.variable,
     toSendTC = (typeof tc.toJSON == 'function') ? tc.toJSON() : tc, toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
-  toSendTC.expectedResults.contentSchema = util.getJsonOrString(jsonSchema);
+  toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
   var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
@@ -417,26 +495,10 @@ var setFinalExpContent = function(er,ar,curVars){
     if(er.content === spclFl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = util.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
-        util.walkInto(function(valn, key, root){
-          if(typeof root === 'object' && root && root.hasOwnProperty(key)){
-            var val = root[key], tmpKy = null;
-            if(util.isWithVars(key) && key !== spcl){
-              tmpKy = processUtil.searchAndReplaceString(key, curVars, config.meta);
-              if(tmpKy !== key){
-                val = root[tmpKy] = root[key];
-                delete root[key];
-              }
-            }
-            if(typeof val === 'string' && val && val !== spcl){
-              if(util.isWithVars(val)){
-                root[tmpKy || key] = processUtil.searchAndReplaceString(val);
-              }
-            }
-          }
-        }, null, exCont);
-        if(isSpcl) exCont = util.mergeObjects(exCont, util.getJsonOrString(ar.content), { spcl : spcl });
+        exCont = processUtil.getReplacedStringifiedObject(exCont);
+        if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
         er.content = util.stringify(exCont);
       }
     } else {
@@ -487,7 +549,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
   var isPassed = true, toValidate = false, headers = {},
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
-  var actualJSONContent = util.getJsonOrString(actualResults.content),
+  var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
       findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
@@ -537,6 +599,7 @@ function vRunner(opts){
     this.filePath = process.env.PWD+'/vrest_logs/logs';
     if(this.logger === 'json') this.filePath += '.json';
     else if(this.logger === 'xunit') this.filePath += '.xml';
+    else if(this.logger === 'csv') this.filePath += '.csv';
   }
   this.logger = require('./logger/'+this.logger)({ runner : this });
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
@@ -552,7 +615,7 @@ function vRunner(opts){
   this.filters = queryObject;
   this.instanceName = getInstanceName(this.url);
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
-  this.url = util.completeURL(this.instanceURL + '/g/testcase', queryObject);
+  this.url = processUtil.completeURL(this.instanceURL + '/g/testcase', queryObject);
   this.pendingTrtc = [];
   this.stopped = false;
   this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
@@ -840,7 +903,7 @@ vRunner.prototype.run = function(next){
         if(tc.runnable){
           tc = processUtil.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
           if(tc.condition) {
-            tc.url = util.completeURL(tc.url, tc.params);
+            tc.url = processUtil.completeURL(tc.url, tc.params);
             if(tc.authorizationId){
               if(typeof self.authorizations[tc.authorizationId] === 'function'){
                 tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
