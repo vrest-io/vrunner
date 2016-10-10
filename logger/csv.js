@@ -11,8 +11,8 @@ module.exports = function(args){
     var toPush = [];
     toPush.push(trtc.testCaseId);
     toPush.push(tc.summary);
-    toPush.push(trtc.runnerCase.url);
-    toPush.push(trtc.runnerCase.method);
+    toPush.push((trtc.runnerCase || tc).url);
+    toPush.push((trtc.runnerCase || tc).method);
     toPush.push(trtc.isExecuted ? 'Yes':'No');
     toPush.push(trtc.isPassed ? 'Yes':'No');
     toPush.push(trtc.executionTime);
