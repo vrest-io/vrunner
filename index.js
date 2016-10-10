@@ -121,9 +121,9 @@ var request = require('request').defaults({jar: true, json: true}),
         }
         if(opt.castInString && typeof obj !== 'string'){
           if(typeof obj === 'object') return util.stringify(obj);
-          else return String(obj);
+          else return processUtil.searchAndReplaceString(String(obj));
         } else {
-          return obj;
+          return processUtil.searchAndReplaceString(obj);
         }
       },
 
