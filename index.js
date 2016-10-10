@@ -44,8 +44,6 @@ var request = require('request').defaults({jar: true, json: true}),
       meta : publicConfiguration
     };
 
-    var replacingString = ReplaceModule.replace;
-
     /*
      * replacing all the entities of test cases that need to be handled with variables
      *
@@ -61,7 +59,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(tc.params){
           tc.params.forEach(function(v){
             if(v.id){
-              currVal = replacingString(v.value);
+              currVal = processUtil.replacingString(typeof v.value === 'undefined' ? '' : v.value);
               if(v.paramType === 'string' && typeof currVal !== 'string'){
                 if(typeof currVal === 'object'){
                   currVal = util.stringify(currVal);
@@ -104,7 +102,7 @@ var request = require('request').defaults({jar: true, json: true}),
               if(typeof root === 'object' && root && root.hasOwnProperty(key)){
                 var val = root[key], tmpKy = null;
                 if(util.isWithVars(key) && key !== spcl){
-                  tmpKy = processUtil.searchAndReplaceString(key);
+                  tmpKy = processUtil.replacingString(key);
                   if(tmpKy !== key){
                     val = root[tmpKy] = root[key];
                     delete root[key];
@@ -112,7 +110,7 @@ var request = require('request').defaults({jar: true, json: true}),
                 }
                 if(typeof val === 'string' && val && val !== spcl){
                   if(util.isWithVars(val)){
-                    root[tmpKy || key] = processUtil.searchAndReplaceString(val);
+                    root[tmpKy || key] = processUtil.replacingString(val);
                   }
                 }
               }
@@ -121,9 +119,9 @@ var request = require('request').defaults({jar: true, json: true}),
         }
         if(opt.castInString && typeof obj !== 'string'){
           if(typeof obj === 'object') return util.stringify(obj);
-          else return processUtil.searchAndReplaceString(String(obj));
+          else return processUtil.replacingString(String(obj));
         } else {
-          return processUtil.searchAndReplaceString(obj);
+          return processUtil.replacingString(obj);
         }
       },
 
@@ -149,8 +147,8 @@ var request = require('request').defaults({jar: true, json: true}),
         return url + (s || '');
       },
 
-      searchAndReplaceString : function(str){
-        return replacingString(str);
+      replacingString : function(str){
+        return ReplaceModule.replace(str);
       },
 
       configureVarCol : function(varCol){
@@ -161,7 +159,7 @@ var request = require('request').defaults({jar: true, json: true}),
           v = varCol[z];
           if(v.id){
             key = util.getModelVal(v, 'key');
-            vlu = replacingString(util.getModelVal(v,'value'));
+            vlu = processUtil.replacingString(util.getModelVal(v,'value'));
             typ = util.getModelVal(v,'varType');
             if(typ !== 'string'){
               try {
@@ -179,12 +177,12 @@ var request = require('request').defaults({jar: true, json: true}),
       },
 
       preProcessTestCase : function(tc) {
-        tc.url = replacingString(tc.url);
+        tc.url = processUtil.replacingString(tc.url);
 
         if(tc.headers){
           tc.headers.forEach(function(header){
             if(header.id){
-              header.value = replacingString(header.value || '');
+              header.value = processUtil.replacingString(header.value || '');
             }
           });
         }
@@ -196,7 +194,7 @@ var request = require('request').defaults({jar: true, json: true}),
         }
         if(tc.condition) {
           try {
-            tc.condition = JSON.parse(replacingString(tc.condition));
+            tc.condition = JSON.parse(processUtil.replacingString(tc.condition));
           } catch(er){
             tc.condition = true;
           }
@@ -367,7 +365,7 @@ var getJSONPathValue = function(path, json){
   ret = JSONPath(json, path);
 
   if(ret === 'V_PATH_NOT_RESOLVED') {
-    tp = processUtil.searchAndReplaceString(path);
+    tp = processUtil.replacingString(path);
     if(tp !== path) ret = JSONPath(json, tp);
   }
   if(Array.isArray(ret) && ret.length === 1) return ret[0];
@@ -449,10 +447,10 @@ var extractVarsFrom = function(tc, result, headers) {
 
 var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
-    ass.property = processUtil.searchAndReplaceString(ass.property, curVars, publicConfiguration);
+    ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
-    ass.value = processUtil.searchAndReplaceString(ass.value, curVars, publicConfiguration);
+    ass.value = processUtil.replacingString(ass.value, curVars, publicConfiguration);
   } else delete ass.value;
   switch(ass.name){
     case 'statusCode' :
@@ -502,7 +500,7 @@ var setFinalExpContent = function(er,ar,curVars){
         er.content = util.stringify(exCont);
       }
     } else {
-      er.content = processUtil.searchAndReplaceString(er.content);
+      er.content = processUtil.replacingString(er.content);
     }
   }
   return toSet;
