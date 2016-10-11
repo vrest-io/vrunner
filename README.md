@@ -3,10 +3,12 @@
 > Runs vREST test cases on terminal.
 
 #### Prerequisites:
-* Node.js - Download and Install [Node.js](http://www.nodejs.org/download/). You can also follow this wiki (https://github.com/joyent/node/wiki/installing-node.js-via-package-manager) 
+* Node.js - Download and Install [Node.js](https://nodejs.org/en/download/). You can also follow this wiki (https://nodejs.org/en/download/package-manager/) 
 
-#### Installation: 
+#### Installation / Update: 
 	sudo npm install -g vrunner
+
+* sudo is optional. For windows, remove sudo from the above command.
 
 #### Usage: 
 	vrunner --email=<vrest_email> --password=<vrest_password> 
