@@ -30,13 +30,13 @@
                            By default Secure Certificate Check is enabled. This option is 
                            useful in self-signed certificate issues.
         -L, --logger     : Your desired logging of the vRUNNER execution process and 
-                           result. This can be either `console` or `json` or `xunit`.
+                           result. This can be either `console` or `json` or `csv` or `xunit`.
                            By default `console` logger is used.
         -F, --filepath   : Valid if other than `console` logger is selected.
                            Absolute path of the log file, into which execution process 
                            and result logs will be dumped. If path/file is not present, 
                            tool will try to setup that path, and create file automatically.
                            Please note that if file already exists, that will be 
-                           overwritten. By default it will be the `vrest_logs/logs.[json|xml]` 
+                           overwritten. By default it will be the `vrest_logs/logs.[json|xml|csv]` 
                            in current directory.
         -H, --help       : To see this help.
