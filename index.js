@@ -19,6 +19,7 @@ var request = require('request').defaults({jar: true, json: true}),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
     btoa = require('btoa'),
+    mainUrlUtil = require('url'),
     V_BASE_URL = 'https://vrest.io/',
     publicConfiguration = {},
     RUNNER_LIMIT = 5000,
@@ -223,14 +224,18 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
     });
     if(pages[page+1] === false) fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
-  } else if(typeof pages[page] === 'string') next(pages[page]);
-  else if(pages[page] === false) {
+  } else if(typeof pages[page] === 'string') {
+    next(pages[page]);
+  } else if(pages[page] === false) {
     pages[page] = true;
     request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || body.error) pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
-      else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT)
+      if(err || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
+        pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
+        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+      } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      else if(!page){
+        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+      } else if(!page){
         oneTimeCache(vrunner,body.output,body.total);
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
         vrunner.on('new_page', function(npage){
@@ -314,8 +319,7 @@ var getAuthHeader = function(ath){
     return authConfig.authHeader || '';
   } else if(authType === 'oauth1.0'){
     return function(tc) {
-      var params = util.extractParamters(tc.params);
-      new OAuth1(authConfig, tc.method, processUtil.completeURL(tc.url, params.query)).getAuthHeader();
+      new OAuth1(authConfig, tc.method, tc.url).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
@@ -613,7 +617,7 @@ function vRunner(opts){
   this.filters = queryObject;
   this.instanceName = getInstanceName(this.url);
   this.instanceURL = V_BASE_URL+ORG_URL_PREFIX+this.instanceName;
-  this.url = processUtil.completeURL(this.instanceURL + '/g/testcase', queryObject);
+  this.url = this.instanceURL + '/g/testcase' + mainUrlUtil.format({ query : queryObject });
   this.pendingTrtc = [];
   this.stopped = false;
   this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
