@@ -319,7 +319,7 @@ var getAuthHeader = function(ath){
     return authConfig.authHeader || '';
   } else if(authType === 'oauth1.0'){
     return function(tc) {
-      new OAuth1(authConfig, tc.method, tc.url).getAuthHeader();
+      return (new OAuth1(authConfig, tc.method, tc.url)).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
