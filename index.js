@@ -585,7 +585,7 @@ function vRunner(opts){
     delete opts.vRESTBaseUrl;
   }
   if(opts.debugging !== true){
-    ReplaceModule.init({ V_DEBUG : function(){}; });
+    ReplaceModule.init({ V_DEBUG : function(){} });
   }
   if(opts.nosslcheck === true){
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
