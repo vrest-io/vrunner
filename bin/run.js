@@ -63,7 +63,7 @@ if(showHelp){
   console.log('\n    vRUNNER - Runs vREST test cases.\n');
   console.log('    Usage: vrunner --email=<vrest_email> --password=<vrest_password> ');
   console.log('           --url="<vrest_testcase_list_url>" [--env=<environment_name>]');
-  console.log('           --nosslcheck=<boolean_value> [--debug=<true_or_false>] [--logger=<one_of_available_loggers>]');
+  console.log('           [--nosslcheck=<boolean_value>] [--debug=<boolean_value>] [--logger=<one_of_available_loggers>]');
   console.log('           [--filepath="<path_of_log_file_for_logger_other_than_console>"]');
   console.log('    Options:\n');
   console.log('    -E, --email      : Email ID through which you have registered on vREST');
