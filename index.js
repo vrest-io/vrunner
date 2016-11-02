@@ -230,7 +230,7 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   } else if(pages[page] === false) {
     pages[page] = true;
     request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
+      if(err || !body || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
         pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
@@ -273,7 +273,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
 var hasRunPermission = function(instance, project, next){
   request(V_BASE_URL+'user/hasPermission?prefetchRunnerData=true&permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
-    if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
+    if(err || !body || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
     else next(null,body.output.project, body.output.prefetch, body.output.projectuser);
@@ -296,7 +296,7 @@ var createTestRun = function(instanceURL, filterData, next){
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
     body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
-      if(err || body.error) next(['Error while creating test run : ',err||body]);
+      if(err || !body || body.error) next(['Error while creating test run : ',err||body]);
       else next(null,body.output);
   });
 };
@@ -673,7 +673,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
                 : getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
   }}, function(err,response,body){
     if(error) self.emit('end',error);
-    else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
+    else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
     else self.emit('end',null, body.output.statistics, body.output.remarks);
   });
 };
@@ -700,7 +700,7 @@ vRunner.prototype.kill = function(next){
 vRunner.prototype.sigIn = function(next){
   this.emit('log', 'Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
-    if(err || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
+    if(err || !body || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
     else next(null,body);
   });
 };
@@ -718,7 +718,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err || (body && body.error) || !body) {
+      if(err || !body || body.error) {
         self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
     });
@@ -769,7 +769,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       findHelpers(self, 'publicConfiguration', function(err,body){
-        if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
+        if(err || !body || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
           config.meta = publicConfiguration = body;
           publicConfiguration.startVarExpr = START_VAR_EXPR;
