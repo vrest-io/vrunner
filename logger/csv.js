@@ -3,6 +3,10 @@
 var common = require('./common'), util = require('./../lib/util'),
     fs = require('fs'), mainString = ['"Test Case Id",Summary,URL,Method,Executed?,Passed?,"Response Time(ms)",Remarks'];
 
+var replaceDouble = function(st){
+  return '"'+String(st).replace('"','\"')+'"';
+};
+
 module.exports = function(args){
   args.logger = function(log){
     console.log(log);
@@ -10,13 +14,13 @@ module.exports = function(args){
   args.testcaseLogger = function(log,tc,trtc,stats){
     var toPush = [];
     toPush.push(trtc.testCaseId);
-    toPush.push(tc.summary);
-    toPush.push((trtc.runnerCase || tc).url);
+    toPush.push(replaceDouble(tc.summary));
+    toPush.push(replaceDouble((trtc.runnerCase || tc).url));
     toPush.push((trtc.runnerCase || tc).method);
     toPush.push(trtc.isExecuted ? 'Yes':'No');
     toPush.push(trtc.isPassed ? 'Yes':'No');
     toPush.push(trtc.executionTime);
-    toPush.push(trtc.remarks.replace(',','\,'));
+    toPush.push(replaceDouble(trtc.remarks));
     mainString.push(toPush.join(','));
   };
   args.errorLogger = function(log){
