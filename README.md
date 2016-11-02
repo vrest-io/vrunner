@@ -13,7 +13,7 @@
 #### Usage:
 	vrunner --email=<vrest_email> --password=<vrest_password>
 	        --url="<vrest_testcase_list_url>" [--env=<environment_name>]
-            --nosslcheck=<boolean_value> [--logger=<one_of_available_loggers>]
+            [--nosslcheck=<boolean_value>] [--debug=<boolean_value>] [--logger=<one_of_available_loggers>]
   	        [--filepath="<path_of_log_file_for_logger_other_than_console>"]
 
 #### Options:
