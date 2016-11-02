@@ -18,6 +18,7 @@ var request = require('request').defaults({jar: true, json: true}),
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
+    pathUtil = require('path'),
     btoa = require('btoa'),
     mainUrlUtil = require('url'),
     V_BASE_URL = 'https://vrest.io/',
@@ -485,7 +486,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   toSendTRTC.actualResults = actualResults;
   var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
-  if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+  runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
@@ -601,7 +602,7 @@ function vRunner(opts){
   }
   if(loggers.indexOf(this.logger) === -1)  throw new Error('vRunner : Please input a valid logger.');
   if(this.logger !== 'console' && !this.filePath) {
-    this.filePath = process.env.PWD+'/vrest_logs/logs';
+    this.filePath = pathUtil.resolve('vrest_logs','logs');
     if(this.logger === 'json') this.filePath += '.json';
     else if(this.logger === 'xunit') this.filePath += '.xml';
     else if(this.logger === 'csv') this.filePath += '.csv';
@@ -929,7 +930,6 @@ vRunner.prototype.run = function(next){
                 var actualResults = getActualResults(result.response);
                 trtc.result = actualResults;
                 extractVarsFrom(tc, actualResults, result.response.headers);
-                trtc.variable = util.cloneObject(self.variables);
                 isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
               }
               if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
