@@ -4,7 +4,7 @@ var common = require('./common'), util = require('./../lib/util'),
     fs = require('fs'), mainString = ['"Test Case Id",Summary,URL,Method,Executed?,Passed?,"Response Time(ms)",Remarks'];
 
 var replaceDouble = function(st){
-  return '"'+String(st).replace('"','\"')+'"';
+  return '"'+String(st).replace(/\"/g, '\\"')+'"';
 };
 
 module.exports = function(args){
