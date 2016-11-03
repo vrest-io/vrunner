@@ -18,6 +18,7 @@ var request = require('request').defaults({jar: true, json: true}),
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
+    pathUtil = require('path'),
     btoa = require('btoa'),
     mainUrlUtil = require('url'),
     V_BASE_URL = 'https://vrest.io/',
@@ -229,7 +230,7 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   } else if(pages[page] === false) {
     pages[page] = true;
     request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
+      if(err || !body || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
         pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
@@ -272,7 +273,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
 var hasRunPermission = function(instance, project, next){
   request(V_BASE_URL+'user/hasPermission?prefetchRunnerData=true&permission=RUN_TEST_CASES&project='+project+'&instance='+instance,
   function(err,res,body){
-    if(err || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
+    if(err || !body || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
     else next(null,body.output.project, body.output.prefetch, body.output.projectuser);
@@ -295,7 +296,7 @@ var createTestRun = function(instanceURL, filterData, next){
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
     body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
-      if(err || body.error) next(['Error while creating test run : ',err||body]);
+      if(err || !body || body.error) next(['Error while creating test run : ',err||body]);
       else next(null,body.output);
   });
 };
@@ -485,7 +486,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   toSendTRTC.actualResults = actualResults;
   var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
-  if(toSet) runnerModel.expectedContent = toSendTC.expectedResults.content;
+  runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
@@ -583,6 +584,9 @@ function vRunner(opts){
     V_BASE_URL = opts.vRESTBaseUrl;
     delete opts.vRESTBaseUrl;
   }
+  if(opts.debugging !== true){
+    ReplaceModule.init({ V_DEBUG : function(){} });
+  }
   if(opts.nosslcheck === true){
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     delete opts.nosslcheck;
@@ -598,7 +602,7 @@ function vRunner(opts){
   }
   if(loggers.indexOf(this.logger) === -1)  throw new Error('vRunner : Please input a valid logger.');
   if(this.logger !== 'console' && !this.filePath) {
-    this.filePath = process.env.PWD+'/vrest_logs/logs';
+    this.filePath = pathUtil.resolve('vrest_logs','logs');
     if(this.logger === 'json') this.filePath += '.json';
     else if(this.logger === 'xunit') this.filePath += '.xml';
     else if(this.logger === 'csv') this.filePath += '.csv';
@@ -669,7 +673,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
                 : getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
   }}, function(err,response,body){
     if(error) self.emit('end',error);
-    else if(err || body.error) self.emit('end',['Error while saving report : ', err||body]);
+    else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
     else self.emit('end',null, body.output.statistics, body.output.remarks);
   });
 };
@@ -696,7 +700,7 @@ vRunner.prototype.kill = function(next){
 vRunner.prototype.sigIn = function(next){
   this.emit('log', 'Logging you in ...');
   request({ method: 'POST', uri: V_BASE_URL + 'user/signin', body: this.credentials }, function(err,res,body){
-    if(err || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
+    if(err || !body || body.error) next("Error while logging into vREST.\n" + util.stringify(err||body), 'VRUN_OVER');
     else next(null,body);
   });
 };
@@ -714,7 +718,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     }
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err || (body && body.error) || !body) {
+      if(err || !body || body.error) {
         self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
     });
@@ -765,7 +769,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       findHelpers(self, 'publicConfiguration', function(err,body){
-        if(err || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
+        if(err || !body || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
           config.meta = publicConfiguration = body;
           publicConfiguration.startVarExpr = START_VAR_EXPR;
@@ -926,7 +930,6 @@ vRunner.prototype.run = function(next){
                 var actualResults = getActualResults(result.response);
                 trtc.result = actualResults;
                 extractVarsFrom(tc, actualResults, result.response.headers);
-                trtc.variable = util.cloneObject(self.variables);
                 isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
               }
               if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
