@@ -8,7 +8,7 @@ var options = {
   url: process.env.VREST_URL
 };
 var opts = process.argv.slice(2), showHelp = false, util = require('./../lib/util');
-
+var version = require('../package.json').version;
 if(!opts.length) showHelp = true;
 
 opts.forEach(function(arg){
@@ -61,6 +61,7 @@ opts.forEach(function(arg){
 
 if(showHelp){
   console.log('\n    vRUNNER - Runs vREST test cases.\n');
+  console.log('    version - '+version+'\n');
   console.log('    Usage: vrunner --email=<vrest_email> --password=<vrest_password> ');
   console.log('           --url="<vrest_testcase_list_url>" [--env=<environment_name>]');
   console.log('           [--nosslcheck=<boolean_value>] [--debug=<boolean_value>] [--logger=<one_of_available_loggers>]');
