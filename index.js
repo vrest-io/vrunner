@@ -46,6 +46,22 @@ var request = require('request').defaults({jar: true, json: true}),
       meta : publicConfiguration
     };
 
+    var findTcVarsName = function(what,which){
+      var ar = what.tcVariables || [];
+      if(Array.isArray(ar)){
+        var ln = ar.length;
+        for(var z =0 ; z< ln; z++){
+          if(ar[z] && ar[z].type === which){
+            return ar[z].name;
+          }
+        }
+      }
+    }, setStatusVar = function(vrs, exStatusAll, vl){
+      if(exStatusAll){
+        vrs[exStatusAll] = vl;
+      }
+    };
+
     /*
      * replacing all the entities of test cases that need to be handled with variables
      *
@@ -435,7 +451,7 @@ var extractVarsFrom = function(tc, result, headers) {
     var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
     var variables = ReplaceModule.getVars();
     tc.tcVariables.forEach(function(vr){
-      if(vr.name && vr.path){
+      if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
           opts.prefixes[1].headers = headers;
@@ -860,6 +876,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       fetchAndServe(self.url, self.pageSize, function(tc,cb0){
+        tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
         var trtc = {
           result: {
             headers : [],
@@ -922,8 +939,10 @@ vRunner.prototype.run = function(next){
                 remarks = 'An unknown error occurred while receiving response for the Test case.';
               } else if(result.err) {
                 remarks = 'An error has occurred while executing this testcase. Error logged : '+JSON.stringify(result.err);
+                setStatusVar(self.variables,tc.exStatusAll,'Not Executed');
               } else if(!result.response) {
                 isExecuted = true;
+                setStatusVar(self.variables,tc.exStatusAll,'Not Executed');
                 remarks = 'No response received for this test case.';
               } else {
                 isExecuted = true;
@@ -931,6 +950,7 @@ vRunner.prototype.run = function(next){
                 trtc.result = actualResults;
                 extractVarsFrom(tc, actualResults, result.response.headers);
                 isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+                setStatusVar(self.variables,tc.exStatusAll,isPassed ? 'Passed' : 'Failed');
               }
               if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
                 self.stopped = true;
@@ -943,11 +963,13 @@ vRunner.prototype.run = function(next){
             });
           } else {
             tc.runnable = false;
+            setStatusVar(self.variables,tc.exStatusAll,'Not Runnable')
             trtc.result.content = JSON.stringify(tc.condition);
             trtc.remarks = 'Test case condition was failed, so was not runnable.';
             over();
           }
         } else {
+          setStatusVar(self.variables,tc.exStatusAll,'Not Runnable')
           trtc.remarks = 'Test case was not runnable.';
           over();
         }
