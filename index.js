@@ -59,8 +59,7 @@ var request = require('request').defaults({jar: true, json: true}),
       exitOnDone : true,
       pageSize : 100,
       authorizations : {},
-      validatorIdCodeMap : {},
-      variables : {}
+      validatorIdCodeMap : {}
     },
     config = {
       meta : publicConfiguration
@@ -95,7 +94,7 @@ var request = require('request').defaults({jar: true, json: true}),
         }
         return ls;
       }
-    }, setStatusVar : function(vrs,exStatusAll,lpfl,vl){
+    }, setStatusVar = function(vrs,exStatusAll,lpfl,vl){
       if(lpfl){
         vl = setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
       }
@@ -297,7 +296,7 @@ RunnerModel.prototype = {
       params: this.getTc('params',true),
       id : this.getTc('id')
     };
-    ret.url = util.completeURL(ret.url, ret.params);
+    ret.url = processUtil.completeURL(ret.url, ret.params);
     var authId = this.getTc('authorizationId');
     if(authId){
       ret.authorizationHeader = resolveAuthorization(authId);
@@ -351,7 +350,7 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      else if(Array.isArray(body.output)){
+      } else if(Array.isArray(body.output)){
         var ln = body.output.length;
         for(var n =0;n<ln;n++){
           MAIN_COLLECTION.push(new RunnerModel(processUtil.setupHeaderInTc(body.output[n])));
@@ -585,7 +584,6 @@ var assert = function(validatorIdCodeMap, ass, ops){
 var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
     var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
-    var variables = ReplaceModule.getVars();
     (tcVariables || []).forEach(function(vr){
       if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
@@ -810,7 +808,7 @@ var setupLoopAlgo = function(runModelIndex){
 
 var shouldLoop = function(lp){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
-    var src = processUtil.searchAndReplaceString(lp.source);
+    var src = processUtil.replacingString(lp.source);
     var nm = Math.floor(src);
     if(isNaN(nm)){
       try {
@@ -1124,14 +1122,14 @@ vRunner.prototype.run = function(next){
             remarks = 'An unknown error occurred while receiving response for the Test case.';
           } else if(err) {
             remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
-            setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,'Not Executed');
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,'Not Executed');
           } else {
             isExecuted = true;
             var actualResults = getActualResults(result);
             trtc.result = actualResults;
             extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
             isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-            setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,isPassed ? 'Passed' : 'Failed');
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 'Passed' : 'Failed');
           }
           isPassed = isPassed === true;
           if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
@@ -1143,7 +1141,7 @@ vRunner.prototype.run = function(next){
           over();
         };
         var forNotRunnable = function(cond){
-          setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,'Not Runnable')
+          setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,'Not Runnable')
           self.handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
