@@ -69,6 +69,22 @@ var request = require('request').defaults({jar: true, json: true}),
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
 
+    var findTcVarsName = function(what,which){
+      var ar = what.tcVariables || [];
+      if(Array.isArray(ar)){
+        var ln = ar.length;
+        for(var z =0 ; z< ln; z++){
+          if(ar[z] && ar[z].type === which){
+            return ar[z].name;
+          }
+        }
+      }
+    }, setStatusVar = function(vrs, exStatusAll, vl){
+      if(exStatusAll){
+        vrs[exStatusAll] = vl;
+      }
+    };
+
     /*
      * replacing all the entities of test cases that need to be handled with variables
      *
@@ -552,7 +568,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
     var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
     var variables = ReplaceModule.getVars();
     (tcVariables || []).forEach(function(vr){
-      if(vr.name && vr.path){
+      if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
           opts.prefixes[1].headers = headers;
@@ -1028,6 +1044,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       fetchAndServe(self.url, self.pageSize, function(tc,cb0){
+        tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
         var trtc = {
           result: {
             headers : [],
@@ -1087,12 +1104,14 @@ vRunner.prototype.run = function(next){
             remarks = 'An unknown error occurred while receiving response for the Test case.';
           } else if(err) {
             remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
+            setStatusVar(self.variables,tc.exStatusAll,'Not Executed');
           } else {
             isExecuted = true;
             var actualResults = getActualResults(result);
             trtc.result = actualResults;
             extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
             isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+            setStatusVar(self.variables,tc.exStatusAll,isPassed ? 'Passed' : 'Failed');
           }
           isPassed = isPassed === true;
           if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
@@ -1104,6 +1123,7 @@ vRunner.prototype.run = function(next){
           over();
         };
         var forNotRunnable = function(cond){
+          setStatusVar(self.variables,tc.exStatusAll,'Not Runnable')
           self.handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
