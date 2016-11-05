@@ -79,8 +79,27 @@ var request = require('request').defaults({jar: true, json: true}),
           }
         }
       }
-    }, setStatusVar = function(vrs, exStatusAll, vl){
+    }, setLoopStatus = function(vrs,fl,lp,vl,exStatusAll){
+      if(!(Array.isArray(vrs[fl]))) vrs[fl] = [];
+      var ar = vrs[fl];
+      if(ar[lp] === undefined){
+        while(ar.length <= lp){ ar.push(undefined); }
+      }
+      ar[lp] = vl;
       if(exStatusAll){
+        var ln = ar.length, ls = ln ? 'Passed' : 'Not Executed';
+        for(var z = 0; z < ln; z++){
+          if(ar[z] === 'Failed' || ar[z] == 'Not Executed'){
+            ls = ar[z];
+          }
+        }
+        return ls;
+      }
+    }, setStatusVar : function(vrs,exStatusAll,lpfl,vl){
+      if(lpfl){
+        vl = setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
+      }
+      if(exStatusAll && vl){
         vrs[exStatusAll] = vl;
       }
     };
@@ -1045,6 +1064,7 @@ vRunner.prototype.run = function(next){
     function(cb){
       fetchAndServe(self.url, self.pageSize, function(tc,cb0){
         tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
+        tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
         var trtc = {
           result: {
             headers : [],
@@ -1104,14 +1124,14 @@ vRunner.prototype.run = function(next){
             remarks = 'An unknown error occurred while receiving response for the Test case.';
           } else if(err) {
             remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
-            setStatusVar(self.variables,tc.exStatusAll,'Not Executed');
+            setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,'Not Executed');
           } else {
             isExecuted = true;
             var actualResults = getActualResults(result);
             trtc.result = actualResults;
             extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
             isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-            setStatusVar(self.variables,tc.exStatusAll,isPassed ? 'Passed' : 'Failed');
+            setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,isPassed ? 'Passed' : 'Failed');
           }
           isPassed = isPassed === true;
           if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
@@ -1123,7 +1143,7 @@ vRunner.prototype.run = function(next){
           over();
         };
         var forNotRunnable = function(cond){
-          setStatusVar(self.variables,tc.exStatusAll,'Not Runnable')
+          setStatusVar(self.variables,tc.exStatusAll,tc.exStatusLoop,'Not Runnable')
           self.handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
