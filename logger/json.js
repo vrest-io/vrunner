@@ -8,9 +8,31 @@ module.exports = function(args){
     console.log(log);
   };
   args.testcaseLogger = function(log,tc,trtc,stats){
-    var toPush = { isExecuted : trtc.isExecuted, isPassed : trtc.isPassed, summary : tc.summary, runnerCase : trtc.runnerCase,
+    var toPush = {
+      executionDetails : {
+        request : {
+          method : trtc.runnerCase.method,
+          url : trtc.runnerCase.url,
+          headers : util.parseObject(trtc.runnerCase.headers),
+          body : trtc.runnerCase.body
+        },
+        response : {
+          statusCode : trtc.result.statusCode,
+          headers : util.arrayToMap(trtc.result.headers),
+          content : trtc.result.content
+        }
+      },
+      isExecuted : trtc.isExecuted,
+      isPassed : trtc.isPassed,
+      summary : tc.summary,
+      url : tc.url,
+      remarks : trtc.remarks,
+      executionTime : trtc.executionTime,
+      testCaseId : tc.id,
+      loopIndex : trtc.loopIndex,
       detailedInfoURL : args.runner.instanceURL + '/' + args.runner.projectKey +
-        '/testcase?testRunId='+trtc.testRunId+'&showResponse=true&queryText='+trtc.testCaseId };
+        '/testcase?testRunId='+trtc.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
+    };
     mainJson.testcases.push(toPush);
   };
   args.errorLogger = function(log){
