@@ -104,7 +104,7 @@ var request = require('request').defaults({jar: true, json: true}),
         ls.isRunnable = true;
       }
       if(lpfl){
-        vl = this.setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
+        vl = setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
       }
       if(exStatusAll && vl){
         vrs[exStatusAll] = vl;
