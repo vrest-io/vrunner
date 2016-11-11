@@ -309,6 +309,9 @@ RunnerModel.prototype = {
     var mk = this.getTc('condition',true);
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
     if(typeof mk === 'string'){
+      if(!(mk.length)){
+        return true;
+      }
       try {
         return Boolean(eval(mk));
       } catch(er){
