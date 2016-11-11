@@ -86,17 +86,25 @@ var request = require('request').defaults({jar: true, json: true}),
       }
       ar[lp] = vl;
       if(exStatusAll){
-        var ln = ar.length, ls = ln ? 'Passed' : 'Not Executed';
+        var ls = { isRunnable : false, isExecuted : false, isPassed : true }, ln = ar.length;
+        if(ln) { ls.isRunnable = true; ls.isExecuted = true; }
         for(var z = 0; z < ln; z++){
-          if(ar[z] === 'Failed' || ar[z] == 'Not Executed'){
-            ls = ar[z];
-          }
+          ['isPassed','isExecuted','isRunnable'].forEach(function(frm){
+            ls[frm] = ls[frm] && (ar[z][frm]);
+          });
         }
         return ls;
       }
     }, setStatusVar = function(vrs,exStatusAll,lpfl,vl){
+      var ls = { isRunnable : false, isExecuted : false, isPassed : false };
+      if(vl > 0){
+        ls.isExecuted = ls.isRunnable = true;
+        ls.isPassed = (vl === 2);
+      } else if(vl === 0){
+        ls.isRunnable = true;
+      }
       if(lpfl){
-        vl = setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
+        vl = this.setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
       }
       if(exStatusAll && vl){
         vrs[exStatusAll] = vl;
@@ -132,6 +140,13 @@ var request = require('request').defaults({jar: true, json: true}),
           }
         }
         return str;
+      },
+
+      getReadableString : function(st,blank){
+        if(blank && st === undefined || st === null) return '';
+        if(typeof st === 'string') return st;
+        if(typeof st === 'object') return JSON.stringify(st);
+        return String(st);
       },
 
       getReplacedStringifiedObject : function(obj,opt){
@@ -575,8 +590,8 @@ var assert = function(validatorIdCodeMap, ass, ops){
     if(typeof util.v_asserts._[ass.type] === 'function'){
       ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
-      ret.assertion.property = ass.property || '';
-      ret.assertion.value = ass.value || '';
+      ret.assertion.property = processUtil.getReadableString(ass.property);
+      ret.assertion.value = processUtil.getReadableString(ass.value);
       ret.assertion.actual = ops.setActual || ops.ac;
     }
   }
@@ -1125,14 +1140,14 @@ vRunner.prototype.run = function(next){
             remarks = 'An unknown error occurred while receiving response for the Test case.';
           } else if(err) {
             remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
-            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,'Not Executed');
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
           } else {
             isExecuted = true;
             var actualResults = getActualResults(result);
             trtc.result = actualResults;
             extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
             isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 'Passed' : 'Failed');
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
           }
           isPassed = isPassed === true;
           if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
@@ -1144,7 +1159,7 @@ vRunner.prototype.run = function(next){
           over();
         };
         var forNotRunnable = function(cond){
-          setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,'Not Runnable')
+          setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
           self.handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
