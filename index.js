@@ -590,8 +590,8 @@ var assert = function(validatorIdCodeMap, ass, ops){
     if(typeof util.v_asserts._[ass.type] === 'function'){
       ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
-      ret.assertion.property = processUtil.getReadableString(ass.property,true);
-      ret.assertion.value = processUtil.getReadableString(ass.value);
+      ret.assertion.property = processUtil.getReadableString(ass.property || '',true);
+      ret.assertion.value = processUtil.getReadableString(ass.value || '',true);
       ret.assertion.actual = ops.setActual || ops.ac;
     }
   }
