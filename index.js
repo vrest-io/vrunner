@@ -145,7 +145,7 @@ var request = require('request').defaults({jar: true, json: true}),
       },
 
       getReadableString : function(st,blank){
-        if(blank && st === undefined || st === null) return '';
+        if(blank && (st === undefined || st === null)) return '';
         if(typeof st === 'string') return st;
         if(typeof st === 'object') return JSON.stringify(st);
         return String(st);
