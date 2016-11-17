@@ -97,17 +97,19 @@ var request = require('request').defaults({jar: true, json: true}),
       }
     }, setStatusVar = function(vrs,exStatusAll,lpfl,vl){
       var ls = { isRunnable : false, isExecuted : false, isPassed : false };
-      if(vl > 0){
-        ls.isExecuted = ls.isRunnable = true;
-        ls.isPassed = (vl === 2);
-      } else if(vl === 0){
-        ls.isRunnable = true;
-      }
-      if(lpfl){
-        vl = setLoopStatus(vrs, lpfl, VARS.$, vl, exStatusAll);
-      }
-      if(exStatusAll && vl){
-        vrs[exStatusAll] = vl;
+      if(typeof vl === 'number'){
+        if(vl > 0){
+          ls.isExecuted = ls.isRunnable = true;
+          ls.isPassed = (vl === 2);
+        } else if(vl === 0){
+          ls.isRunnable = true;
+        }
+        if(lpfl){
+          ls = setLoopStatus(vrs, lpfl, VARS.$, ls, exStatusAll);
+        }
+        if(exStatusAll && ls){
+          vrs[exStatusAll] = ls;
+        }
       }
     };
 
@@ -143,7 +145,7 @@ var request = require('request').defaults({jar: true, json: true}),
       },
 
       getReadableString : function(st,blank){
-        if(blank && st === undefined || st === null) return '';
+        if(blank && (st === undefined || st === null)) return '';
         if(typeof st === 'string') return st;
         if(typeof st === 'object') return JSON.stringify(st);
         return String(st);
@@ -590,8 +592,8 @@ var assert = function(validatorIdCodeMap, ass, ops){
     if(typeof util.v_asserts._[ass.type] === 'function'){
       ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
-      ret.assertion.property = processUtil.getReadableString(ass.property,true);
-      ret.assertion.value = processUtil.getReadableString(ass.value);
+      ret.assertion.property = processUtil.getReadableString(ass.property || '',true);
+      ret.assertion.value = processUtil.getReadableString(ass.value || '',true);
       ret.assertion.actual = ops.setActual || ops.ac;
     }
   }
@@ -882,6 +884,7 @@ vRunner.prototype.initAll = function(total){
 
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
+  if(!stopped) stopped = this.stopped;
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -889,8 +892,10 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       failed: report.failed,
       notExecuted: report.notExecuted,
       notRunnable: report.notRunnable
-    }, remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
-                : getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
+    }, remarks : error ?
+        (stopped ? (typeof stopped === 'string' ? stopped : 'Test run was stopped by user.')
+          : util.cropString(util.stringify(error), RUNNER_LIMIT)) :
+        getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
   }}, function(err,response,body){
     if(error) self.emit('end',error);
     else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
@@ -1150,7 +1155,9 @@ vRunner.prototype.run = function(next){
             setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
           }
           isPassed = isPassed === true;
-          if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
+          if(report.total > RUNNER_LIMIT){
+            self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
+          } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
             self.stopped = true;
           }
           if(!trtc.remarks) trtc.remarks = remarks;
