@@ -152,12 +152,11 @@ var request = require('request').defaults({jar: true, json: true}),
       },
 
       getReplacedStringifiedObject : function(obj,opt){
-        if(typeof opt !== 'object' || !opt){
-          opt = { spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr };
-        }
+        if(typeof opt !== 'object' || !opt){ opt = {}; }
+        if(!opt.spcl){ opt.spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr; }
         var spcl = opt.spcl;
         if(obj){
-          var obj = processUtil.getJsonOrString(obj);
+          if(!opt.dontParse){ obj = processUtil.getJsonOrString(obj); }
           if(typeof obj === 'object'){
             util.walkInto(function(valn, key, root){
               if(typeof root === 'object' && root && root.hasOwnProperty(key)){
@@ -178,12 +177,10 @@ var request = require('request').defaults({jar: true, json: true}),
             }, null, obj);
           }
         }
-        if(opt.castInString && typeof obj !== 'string'){
-          if(typeof obj === 'object') return util.stringify(obj);
-          else return processUtil.replacingString(String(obj));
-        } else {
-          return processUtil.replacingString(obj);
+        if(typeof obj !== 'object'){
+          obj = processUtil.replacingString(String(obj));
         }
+        return (typeof obj !== 'string' && opt.castInString) ? util.stringify(obj) : obj;
       },
 
       completeURL: function(url, params) {
@@ -271,7 +268,10 @@ function RunnerModel(ob){
 
 RunnerModel.prototype = {
   getTc : function(prop, withReplace){
+    var op = { dontParse : true }, isParam = false;
     if(prop) {
+      if(prop === 'headers'){ op.castInString = true; }
+      else if(prop === 'params'){ isParam = true; }
       var forArray = function(sr){
         var ar = [];
         if(Array.isArray(sr)){
@@ -284,6 +284,18 @@ RunnerModel.prototype = {
               }
               if(ar[k].hasOwnProperty('value')){
                 ar[k].value = ReplaceModule.replace(ar[k].value);
+                var prv = op.castInString, prvPs = op.dontParse, isString = false;
+                if(isParam) {
+                  isString = (ar[k].paramType === 'string');
+                  op.castInString = isString;
+                  op.dontParse = !(isString);
+                }
+                ar[k].value = processUtil.getReplacedStringifiedObject(ar[k].value, op);
+                op.castInString = prv;
+                op.dontParse = prvPs;
+              }
+              if(prop === 'assertions' && ar[k].hasOwnProperty('property')){
+                ar[k].property = ReplaceModule.replace(ar[k].property);
               }
             }
           }
@@ -592,8 +604,8 @@ var assert = function(validatorIdCodeMap, ass, ops){
     if(typeof util.v_asserts._[ass.type] === 'function'){
       ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
-      ret.assertion.property = processUtil.getReadableString(ass.property || '',true);
-      ret.assertion.value = processUtil.getReadableString(ass.value || '',true);
+      ret.assertion.property = processUtil.getReadableString(ass.property,true);
+      ret.assertion.value = processUtil.getReadableString(ass.value,true);
       ret.assertion.actual = ops.setActual || ops.ac;
     }
   }
@@ -625,7 +637,7 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
     ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
-    ass.value = processUtil.replacingString(ass.value, curVars, publicConfiguration);
+    ass.value = processUtil.getReplacedStringifiedObject(ass.value, { dontParse : true });
   } else delete ass.value;
   switch(ass.name){
     case 'statusCode' :
@@ -727,7 +739,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
       findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
-  (tc.getTc('assertions',true) || []).forEach(function(ass){
+  (tc.getTc('assertions') || []).forEach(function(ass){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
