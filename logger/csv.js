@@ -1,7 +1,7 @@
 'use strict';
 
-var common = require('./common'), util = require('./../lib/util'),
-    fs = require('fs'), mainString = ['"Test Case Id",Summary,URL,Method,Executed?,Passed?,"Response Time(ms)",Remarks'];
+var common = require('./common'), util = require('./../lib/util'), fs = require('fs'),
+    mainString = ['"Test Case Id","Summary","Method","Url","Executed ?","Passed ?","Response Time (ms)","Remarks"'];
 
 var replaceDouble = function(st){
   return '"'+String(st).replace(/\"/g, '""')+'"';
@@ -15,8 +15,9 @@ module.exports = function(args){
     var toPush = [];
     toPush.push(trtc.testCaseId);
     toPush.push(replaceDouble(tc.summary));
-    toPush.push(replaceDouble((trtc.runnerCase || tc).url));
     toPush.push((trtc.runnerCase || tc).method);
+    toPush.push(replaceDouble((trtc.runnerCase || tc).url));
+    toPush.push((trtc.result && trtc.result.statusCode) || 0);
     toPush.push(trtc.isExecuted ? 'Yes':'No');
     toPush.push(trtc.isPassed ? 'Yes':'No');
     toPush.push(trtc.executionTime);
