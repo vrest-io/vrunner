@@ -840,20 +840,21 @@ var setupLoopAlgo = function(runModelIndex){
 
 var shouldLoop = function(lp){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
-    var src = processUtil.replacingString(lp.source);
-    var nm = Math.floor(src);
-    if(isNaN(nm)){
+    var src = processUtil.replacingString(lp.get('source'));
+    var nm = Math.floor(src), isNN = isNaN(nm);
+    if(isNN){
       try {
         if(typeof src === 'string'){
           src = JSON.parse(src);
         }
-        lp.maxCount = Array.isArray(src) ? src.length : 0;
+        lp.maxCount = Array.isArray(src) ? src.length : false;
       } catch(err){
-        lp.maxCount = 0;
+        lp.maxCount = false;
       }
     } else {
       lp.maxCount = nm;
     }
+    if(lp.maxCount === false && processUtil.isConditionPassed(src, false) === true) return true;
   }
   if(lp.maxCount > ((VARS.$)+1)){
     return true;
