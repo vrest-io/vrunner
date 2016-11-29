@@ -1102,7 +1102,7 @@ vRunner.prototype.run = function(next){
         var trtc = {
           result: {
             headers : [],
-            statusCode : 200,
+            statusCode : 0,
             content: '',
             resultType: 'text'
           },
