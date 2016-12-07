@@ -306,8 +306,9 @@ RunnerModel.prototype = {
       if(['raw','expectedResults'].indexOf(prop) !== -1){
         var ret = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
         if(ret.hasOwnProperty('content') && withReplace){
-          ret.content = ReplaceModule.replace(ret.content);
+          ret.content = processUtil.getReplacedStringifiedObject(ret.content, { castInString : true });
         }
+        vl = ret;
       }
       if(['headers','params','assertions'].indexOf(prop) !== -1){
         return forArray(vl);
@@ -367,7 +368,8 @@ var getInstanceName = function(url){
 var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   if(page===vrunner.totalPages) next();
   else if(typeof pages[page] === 'number') {
-    afterFetch((pages[page-1] || 0), pages[page], cb, function(err){
+    var st = (pages[page-1] || 0);
+    afterFetch(st, (st + pages[page]), cb, function(err){
       if(err) next(err);
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
     }, vrunner);
@@ -632,7 +634,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
   return;
 };
 
-var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
+var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
     ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
   } else delete ass.property;
@@ -662,18 +664,18 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
   var actualResults = runnerModel.result,
-    toSendTC = _.extend(runnerModel.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTC = _.extend(tc.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
-  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
+  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
   runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
-var setFinalExpContent = function(er,ar,curVars){
+var setFinalExpContent = function(er,ar){
   var toSet = false;
   if(util.isWithVars(er.content)){
     var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
@@ -735,7 +737,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
   var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
-      findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
+      findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
   (tc.getTc('assertions') || []).forEach(function(ass){
@@ -1179,7 +1181,7 @@ vRunner.prototype.run = function(next){
         };
         var forNotRunnable = function(cond){
           setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
-          self.handleAPIResponse(null, null, cond || true);
+          handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
           forNotRunnable();
