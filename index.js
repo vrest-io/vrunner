@@ -367,8 +367,7 @@ var getInstanceName = function(url){
 var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   if(page===vrunner.totalPages) next();
   else if(typeof pages[page] === 'number') {
-    var st = (pages[page-1] || 0);
-    afterFetch(st, (st + pages[page]), cb, function(err){
+    afterFetch((pages[page-1] || 0), pages[page], cb, function(err){
       if(err) next(err);
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
     }, vrunner);
@@ -401,7 +400,7 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
             }
           });
         }
-        pages[page] = ln;
+        pages[page] = ln + (typeof pages[page-1] === 'number' ? pages[page-1] : 0);
         vrunner.emit('new_page', page);
       } else {
         next('Test cases not found.');
@@ -635,7 +634,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
 
 var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
-    ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
+    ass.property = processUtil.replacingString(ass.property, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
     ass.value = processUtil.getReplacedStringifiedObject(ass.value, { dontParse : true });
