@@ -302,18 +302,17 @@ RunnerModel.prototype = {
         }
         return ar;
       };
-      var vl = this[prop];
+      var vl = this[prop], ts = vl;
       if(['raw','expectedResults'].indexOf(prop) !== -1){
-        var ret = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
-        if(ret.hasOwnProperty('content') && withReplace){
-          ret.content = processUtil.getReplacedStringifiedObject(ret.content, { castInString : true });
+        var ts = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
+        if(ts.hasOwnProperty('content') && withReplace){
+          ts.content = processUtil.getReplacedStringifiedObject(ts.content, { castInString : true });
         }
-        vl = ret;
       }
       if(['headers','params','assertions'].indexOf(prop) !== -1){
-        return forArray(vl);
+        return forArray(ts);
       }
-      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(vl) : vl;
+      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
     }
   },
 
