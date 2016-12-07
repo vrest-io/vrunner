@@ -683,7 +683,6 @@ var setFinalExpContent = function(er,ar,curVars){
     } else if(er.resultType === 'json'){
       var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
-        exCont = processUtil.getReplacedStringifiedObject(exCont);
         if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
         er.content = util.stringify(exCont);
       }
