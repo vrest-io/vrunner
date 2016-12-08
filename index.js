@@ -949,6 +949,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     if(count){
       toSend.count = count;
       toSend.testRunId = self.testRunId;
+      toSend.loopIndex = VARS.$;
       toSend.filterData = self.filters;
     } else {
       toSend.list = self.pendingTrtc;
@@ -1167,7 +1168,7 @@ vRunner.prototype.run = function(next){
             setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
           }
           isPassed = isPassed === true;
-          if(report.total > RUNNER_LIMIT){
+          if(report.total >= (RUNNER_LIMIT - 1)){
             self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
           } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
             self.stopped = true;
