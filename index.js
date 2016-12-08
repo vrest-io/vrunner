@@ -234,6 +234,24 @@ var request = require('request').defaults({jar: true, json: true}),
         return VARS;
       },
 
+      isConditionPassed : function(mk,def){
+        if(def !== false) def = true;
+        if(typeof mk === 'string'){
+          if(!(mk.length)){
+            return def;
+          }
+          try {
+            return Boolean(eval(mk));
+          } catch(er){
+            return def;
+          }
+        } else if(mk !== undefined && mk !== null){
+          return Boolean(mk);
+        } else {
+          return def;
+        }
+      },
+
       setupHeaderInTc : function(tc){
         var setHeaderFromRaw = false;
 
@@ -337,20 +355,7 @@ RunnerModel.prototype = {
   shouldRun : function(){
     var mk = this.getTc('condition',true);
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
-    if(typeof mk === 'string'){
-      if(!(mk.length)){
-        return true;
-      }
-      try {
-        return Boolean(eval(mk));
-      } catch(er){
-        return true;
-      }
-    } else if(mk !== undefined && mk !== null){
-      return Boolean(mk);
-    } else {
-      return true;
-    }
+    return processUtil.isConditionPassed(mk);
   }
 };
 
@@ -826,8 +831,10 @@ var setupLoopAlgo = function(runModelIndex){
     if(lp){
       var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
       if(typeof nIndex === 'number'){
-        var stMod = MAIN_COLLECTION[nIndex];
-        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && this.shouldLoop(lp)){
+        var stMod = MAIN_COLLECTION[nIndex], lps = this.shouldLoop(lp);
+        if(lps === 0){
+          runModel.condition = 'false';
+        } else if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && lps){
           this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
           (VARS.$)++;
           return nIndex;
@@ -839,7 +846,7 @@ var setupLoopAlgo = function(runModelIndex){
 
 var shouldLoop = function(lp){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
-    var src = processUtil.replacingString(lp.get('source'));
+    var src = processUtil.replacingString(lp.source);
     var nm = Math.floor(src), isNN = isNaN(nm);
     if(isNN){
       try {
@@ -853,12 +860,19 @@ var shouldLoop = function(lp){
     } else {
       lp.maxCount = nm;
     }
-    if(lp.maxCount === false && processUtil.isConditionPassed(src, false) === true) return true;
+    if(lp.maxCount === false) {
+      if(processUtil.isConditionPassed(src, false) === true) {
+        return true;
+      } else {
+        return 0;
+      }
+    }
   }
-  if(lp.maxCount > ((VARS.$)+1)){
+  if(typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1)){
     return true;
   } else {
     VARS.$ = 0;
+    if(lp.maxCount === 0){ return 0; }
     return false;
   }
 };
