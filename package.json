@@ -1,7 +1,7 @@
 {
   "name": "vrunner",
   "description": "Runs vREST test cases",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "homepage": "http://vrest.io",
   "author": {
     "name": "vREST Team",
