@@ -428,6 +428,7 @@ var findLastTcWithId = function(currentIndex, findWithId){
 var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
     if(index < en && index < vrunner.totalRecords){
+      vrunner.setupLoopAlgo(index,true);
       cb(MAIN_COLLECTION[index], function(){
         var nIndex = vrunner.setupLoopAlgo(index);
         forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
@@ -823,7 +824,7 @@ function vRunner(opts){
   });
 };
 
-var setupLoopAlgo = function(runModelIndex){
+var setupLoopAlgo = function(runModelIndex, noUpdate){
   var runModel = MAIN_COLLECTION[runModelIndex];
   if(runModel){
     var tsId = runModel.testSuiteId;
@@ -832,17 +833,23 @@ var setupLoopAlgo = function(runModelIndex){
       var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
       if(typeof nIndex === 'number'){
         var stMod = MAIN_COLLECTION[nIndex];
-        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && this.shouldLoop(lp)){
-          this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
-          (VARS.$)++;
-          return nIndex;
+        if(stMod && tsId === stMod.testSuiteId){
+          lps = this.shouldLoop(lp, noUpdate);
+          if(lps === 0){
+            runModel.condition = 'false';
+            return false;
+          } else if((!(noUpdate)) && nIndex !== -1 && nIndex <= runModelIndex && lps){
+            this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
+            (VARS.$)++;
+            return nIndex;
+          }
         }
       }
     }
   }
 };
 
-var shouldLoop = function(lp){
+var shouldLoop = function(lp, noUpdate){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
     var src = processUtil.replacingString(lp.source);
     var nm = Math.floor(src), isNN = isNaN(nm);
@@ -869,7 +876,7 @@ var shouldLoop = function(lp){
   if(typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1)){
     return true;
   } else {
-    VARS.$ = 0;
+    if(!noUpdate) { VARS.$ = 0; }
     if(lp.maxCount === 0){ return 0; }
     return false;
   }
