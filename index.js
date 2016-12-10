@@ -831,10 +831,8 @@ var setupLoopAlgo = function(runModelIndex){
     if(lp){
       var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
       if(typeof nIndex === 'number'){
-        var stMod = MAIN_COLLECTION[nIndex], lps = this.shouldLoop(lp);
-        if(lps === 0){
-          runModel.condition = 'false';
-        } else if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && lps){
+        var stMod = MAIN_COLLECTION[nIndex];
+        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && this.shouldLoop(lp)){
           this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
           (VARS.$)++;
           return nIndex;
