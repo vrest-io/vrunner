@@ -301,12 +301,11 @@ RunnerModel.prototype = {
                 ar[k].name = ReplaceModule.replace(ar[k].name);
               }
               if(ar[k].hasOwnProperty('value')){
-                ar[k].value = ReplaceModule.replace(ar[k].value);
                 var prv = op.castInString, prvPs = op.dontParse, isString = false;
                 if(isParam) {
                   isString = (ar[k].paramType === 'string');
                   op.castInString = isString;
-                  op.dontParse = !(isString);
+                  op.dontParse = (isString);
                 }
                 ar[k].value = processUtil.getReplacedStringifiedObject(ar[k].value, op);
                 op.castInString = prv;
