@@ -31,6 +31,26 @@ var request = require('request').defaults({jar: true, json: true}),
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     pages = [false],
+    MAIN_AUTHORIZATIONS = {},
+    MAIN_COLLECTION = [],
+    _ = {
+      extend : function(target) {
+        if (target == null) { target = {}; }
+        target = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+          var source = arguments[index];
+          if (source != null) {
+            for (var key in source) {
+              if (Object.prototype.hasOwnProperty.call(source, key)) {
+                target[key] = source[key];
+              }
+            }
+          }
+        }
+        return target;
+      }
+    },
+    LOOPS = [],
     options = {
       credentials : {},
       logger : 'console',
@@ -39,11 +59,58 @@ var request = require('request').defaults({jar: true, json: true}),
       exitOnDone : true,
       pageSize : 100,
       authorizations : {},
-      validatorIdCodeMap : {},
-      variables : {}
+      validatorIdCodeMap : {}
     },
     config = {
       meta : publicConfiguration
+    };
+
+    var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
+    VARS.$ = 0;
+
+    var findTcVarsName = function(what,which){
+      var ar = what.tcVariables || [];
+      if(Array.isArray(ar)){
+        var ln = ar.length;
+        for(var z =0 ; z< ln; z++){
+          if(ar[z] && ar[z].type === which){
+            return ar[z].name;
+          }
+        }
+      }
+    }, setLoopStatus = function(vrs,fl,lp,vl,exStatusAll){
+      if(!(Array.isArray(vrs[fl]))) vrs[fl] = [];
+      var ar = vrs[fl];
+      if(ar[lp] === undefined){
+        while(ar.length <= lp){ ar.push(undefined); }
+      }
+      ar[lp] = vl;
+      if(exStatusAll){
+        var ls = { isRunnable : false, isExecuted : false, isPassed : true }, ln = ar.length;
+        if(ln) { ls.isRunnable = true; ls.isExecuted = true; }
+        for(var z = 0; z < ln; z++){
+          ['isPassed','isExecuted','isRunnable'].forEach(function(frm){
+            ls[frm] = ls[frm] && (ar[z][frm]);
+          });
+        }
+        return ls;
+      }
+    }, setStatusVar = function(vrs,exStatusAll,lpfl,vl){
+      var ls = { isRunnable : false, isExecuted : false, isPassed : false };
+      if(typeof vl === 'number'){
+        if(vl > 0){
+          ls.isExecuted = ls.isRunnable = true;
+          ls.isPassed = (vl === 2);
+        } else if(vl === 0){
+          ls.isRunnable = true;
+        }
+        if(lpfl){
+          ls = setLoopStatus(vrs, lpfl, VARS.$, ls, exStatusAll);
+        }
+        if(exStatusAll && ls){
+          vrs[exStatusAll] = ls;
+        }
+      }
     };
 
     /*
@@ -54,31 +121,16 @@ var request = require('request').defaults({jar: true, json: true}),
      * @return {Object} tc - the modified test case, with all the variables replaced with corresponding values
      * */
     var processUtil = {
-      preProcessForSearchAndReplace: function(tc) {
-
-        var key, variables = ReplaceModule.getVars(), currVal;
-
-        if(tc.params){
-          tc.params.forEach(function(v){
-            if(v.id){
-              currVal = processUtil.replacingString(typeof v.value === 'undefined' ? '' : v.value);
-              if(v.paramType === 'string' && typeof currVal !== 'string'){
-                if(typeof currVal === 'object'){
-                  currVal = util.stringify(currVal);
-                } else {
-                  currVal = String(currVal);
-                }
-              }
-              v.value = currVal;
-              if(v.method === 'path') {
-                //path variables will overwrite previously defined variables
-                variables[util.getModelVal(v, 'name')] = util.getModelVal(v, 'value');
-              }
+      extractPathVars: function(params) {
+        if(Array.isArray(params)){
+          params.forEach(function(v){
+            var ky = util.getModelVal(v, 'name');
+            if(v.id && ky && v.method === 'path') {
+              //path variables will overwrite previously defined variables
+              VARS[replacingString(ky)] = replacingString(util.getModelVal(v, 'value') || '');
             }
           });
         }
-
-        return this.preProcessTestCase(tc);
       },
 
       getJsonOrString: function(str){
@@ -92,13 +144,19 @@ var request = require('request').defaults({jar: true, json: true}),
         return str;
       },
 
+      getReadableString : function(st,blank){
+        if(blank && (st === undefined || st === null)) return '';
+        if(typeof st === 'string') return st;
+        if(typeof st === 'object') return JSON.stringify(st);
+        return String(st);
+      },
+
       getReplacedStringifiedObject : function(obj,opt){
-        if(typeof opt !== 'object' || !opt){
-          opt = { spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr };
-        }
+        if(typeof opt !== 'object' || !opt){ opt = {}; }
+        if(!opt.spcl){ opt.spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr; }
         var spcl = opt.spcl;
         if(obj){
-          var obj = processUtil.getJsonOrString(obj);
+          if(!opt.dontParse){ obj = processUtil.getJsonOrString(obj); }
           if(typeof obj === 'object'){
             util.walkInto(function(valn, key, root){
               if(typeof root === 'object' && root && root.hasOwnProperty(key)){
@@ -119,12 +177,10 @@ var request = require('request').defaults({jar: true, json: true}),
             }, null, obj);
           }
         }
-        if(opt.castInString && typeof obj !== 'string'){
-          if(typeof obj === 'object') return util.stringify(obj);
-          else return processUtil.replacingString(String(obj));
-        } else {
-          return processUtil.replacingString(obj);
+        if(typeof obj !== 'object'){
+          obj = processUtil.replacingString(String(obj));
         }
+        return (typeof obj !== 'string' && opt.castInString) ? util.stringify(obj) : obj;
       },
 
       completeURL: function(url, params) {
@@ -153,13 +209,13 @@ var request = require('request').defaults({jar: true, json: true}),
         return ReplaceModule.replace(str);
       },
 
-      configureVarCol : function(varCol){
+      configureVarCol : function(varCol,opt){
         //varCol: global variable collection
         ReplaceModule.clearVars();
-        var variables = ReplaceModule.getVars(), key, vlu, tmp, typ;
+        var key, vlu, tmp, typ;
         for(var z=0, v = null, len = varCol.length;z<len;z++){
           v = varCol[z];
-          if(v.id){
+          if(v.id && (v.projEnvId === opt.selectedEnvironment)){
             key = util.getModelVal(v, 'key');
             vlu = processUtil.replacingString(util.getModelVal(v,'value'));
             typ = util.getModelVal(v,'varType');
@@ -172,40 +228,135 @@ var request = require('request').defaults({jar: true, json: true}),
             if(typ === typeof tmp) {
               vlu = tmp;
             }
-            variables[key] = vlu;
+            VARS[key] = vlu;
           }
         }
-        return variables;
+        return VARS;
       },
 
-      preProcessTestCase : function(tc) {
-        tc.url = processUtil.replacingString(tc.url);
+      isConditionPassed : function(mk,def){
+        if(def !== false) def = true;
+        if(typeof mk === 'string'){
+          if(!(mk.length)){
+            return def;
+          }
+          try {
+            return Boolean(eval(mk));
+          } catch(er){
+            return def;
+          }
+        } else if(mk !== undefined && mk !== null){
+          return Boolean(mk);
+        } else {
+          return def;
+        }
+      },
 
+      setupHeaderInTc : function(tc){
+        var setHeaderFromRaw = false;
+
+        if(tc.raw && tc.raw.enabled && tc.raw.content) {
+          setHeaderFromRaw = tc.raw.resultType;
+        }
         if(tc.headers){
           tc.headers.forEach(function(header){
-            if(header.id){
-              header.value = processUtil.replacingString(header.value || '');
+            if(header.id && header.name && header.name.toLowerCase() === 'content-type'){
+              setHeaderFromRaw = false;
             }
           });
         }
-
-        // below line is already in assert. So no need here.
-        // if(tc.expectedResults) tc.expectedResults.content = replacingString(tc.expectedResults.content);
-        if(tc.raw && tc.raw.enabled && tc.raw.content) {
-          tc.raw.content = processUtil.getReplacedStringifiedObject(tc.raw.content, { castInString : true });
-        }
-        if(tc.condition) {
-          try {
-            tc.condition = JSON.parse(processUtil.replacingString(tc.condition));
-          } catch(er){
-            tc.condition = true;
+        if(setHeaderFromRaw === 'json' || setHeaderFromRaw === 'xml'){
+          if(!Array.isArray(tc.headers)){
+            tc.headers = [];
           }
-        } else {
-          tc.condition = true;
+          tc.headers.push({ id : 'VREST_CNT_HEADER', name : 'Content-Type', value : 'application/'+setHeaderFromRaw });
         }
         return tc;
       }
     };
+
+function RunnerModel(ob){
+  var self = this;
+  Object.keys(ob).forEach(function(ky){
+    if(ob.hasOwnProperty(ky)){
+      self[ky] = ob[ky];
+    }
+  });
+};
+
+RunnerModel.prototype = {
+  getTc : function(prop, withReplace){
+    var op = { dontParse : true }, isParam = false;
+    if(prop) {
+      if(prop === 'headers'){ op.castInString = true; }
+      else if(prop === 'params'){ isParam = true; }
+      var forArray = function(sr){
+        var ar = [];
+        if(Array.isArray(sr)){
+          var ln = sr.length;
+          for(var k = 0; k < ln; k++){
+            ar.push(_.extend({},sr[k]));
+            if(withReplace){
+              if(prop !== 'assertions' && ar[k].hasOwnProperty('name')){
+                ar[k].name = ReplaceModule.replace(ar[k].name);
+              }
+              if(ar[k].hasOwnProperty('value')){
+                var prv = op.castInString, prvPs = op.dontParse, isString = false;
+                if(isParam) {
+                  isString = (ar[k].paramType === 'string');
+                  op.castInString = isString;
+                  op.dontParse = (isString);
+                }
+                ar[k].value = processUtil.getReplacedStringifiedObject(ar[k].value, op);
+                op.castInString = prv;
+                op.dontParse = prvPs;
+              }
+              if(prop === 'assertions' && ar[k].hasOwnProperty('property')){
+                ar[k].property = ReplaceModule.replace(ar[k].property);
+              }
+            }
+          }
+        }
+        return ar;
+      };
+      var vl = this[prop], ts = vl;
+      if(['raw','expectedResults'].indexOf(prop) !== -1){
+        var ts = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
+        if(ts.hasOwnProperty('content') && withReplace){
+          ts.content = processUtil.getReplacedStringifiedObject(ts.content, { castInString : true });
+        }
+      }
+      if(['headers','params','assertions'].indexOf(prop) !== -1){
+        return forArray(ts);
+      }
+      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
+    }
+  },
+
+  getTcToExecute : function(){
+    var ret = {
+      method: this.getTc('method'),
+      url : this.getTc('url',true),
+      raw: this.getTc('raw',true),
+      headers: this.getTc('headers',true),
+      params: this.getTc('params',true),
+      id : this.getTc('id')
+    };
+    ret.url = processUtil.completeURL(ret.url, ret.params);
+    var authId = this.getTc('authorizationId');
+    if(authId){
+      ret.authorizationHeader = resolveAuthorization(authId);
+    }
+    this.lastSend = ret;
+    return ret;
+  },
+
+  shouldRun : function(){
+    var mk = this.getTc('condition',true);
+    this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
+    return processUtil.isConditionPassed(mk);
+  }
+};
 
 var getInstanceName = function(url){
   var instanceName = null, prefixIndex = url.indexOf(ORG_URL_PREFIX), prefixLength = ORG_URL_PREFIX.length, index;
@@ -219,11 +370,11 @@ var getInstanceName = function(url){
 
 var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   if(page===vrunner.totalPages) next();
-  else if(Array.isArray(pages[page])) {
-    afterFetch(pages[page], cb, function(err){
+  else if(typeof pages[page] === 'number') {
+    afterFetch((pages[page-1] || 0), pages[page], cb, function(err){
       if(err) next(err);
       else fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
-    });
+    }, vrunner);
     if(pages[page+1] === false) fetchSinglePage(url, page+1, pageSize, cb, next, vrunner);
   } else if(typeof pages[page] === 'string') {
     next(pages[page]);
@@ -235,19 +386,28 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
-      } else if(!page){
-        oneTimeCache(vrunner,body.output,body.total);
-        fetchSinglePage(url, page, pageSize, cb, next, vrunner);
-        vrunner.on('new_page', function(npage){
-          if(vrunner.pageLoading){
-            fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
-            vrunner.pageLoading = false;
+      } else if(Array.isArray(body.output)){
+        var ln = body.output.length;
+        for(var n =0;n<ln;n++){
+          MAIN_COLLECTION.push(new RunnerModel(processUtil.setupHeaderInTc(body.output[n])));
+        }
+        if(!page){
+          if(Array.isArray(body.loops)){
+            LOOPS = body.loops;
           }
-        });
-      } else {
-        pages[page] = body.output;
+          oneTimeCache(vrunner,body.output,body.total);
+          fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+          vrunner.on('new_page', function(npage){
+            if(vrunner.pageLoading){
+              fetchSinglePage(url,npage,pageSize,cb,next,vrunner);
+              vrunner.pageLoading = false;
+            }
+          });
+        }
+        pages[page] = ln + (typeof pages[page-1] === 'number' ? pages[page-1] : 0);
         vrunner.emit('new_page', page);
+      } else {
+        next('Test cases not found.');
       }
     });
   } else {
@@ -256,8 +416,27 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   }
 };
 
-var afterFetch = function(body, cb, next){
-  util.recForEach({ ar : body, ec : cb, finishOnError : true, cb : next });
+var findLastTcWithId = function(currentIndex, findWithId){
+  for(var z = currentIndex;z>=0;z--){
+    if(MAIN_COLLECTION[z].id === findWithId){
+      return z;
+    }
+  }
+};
+
+var afterFetch = function(st, en, cb, next, vrunner){
+  var forEachTc = function(index){
+    if(index < en && index < vrunner.totalRecords){
+      vrunner.setupLoopAlgo(index,true);
+      cb(MAIN_COLLECTION[index], function(){
+        var nIndex = vrunner.setupLoopAlgo(index);
+        forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
+      });
+    } else {
+      next();
+    }
+  };
+  forEachTc(st);
 };
 
 var oneTimeCache = function(vrunner,records,total){
@@ -325,6 +504,12 @@ var getAuthHeader = function(ath){
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
   }
+}, resolveAuthorization = function(authorizationId){
+  if(typeof MAIN_AUTHORIZATIONS[authorizationId] === 'function'){
+    return MAIN_AUTHORIZATIONS[authorizationId](tc);
+  } else {
+    return MAIN_AUTHORIZATIONS[authorizationId];
+  }
 };
 
 var fireRequest = function(tc, trtc, callback){
@@ -333,7 +518,10 @@ var fireRequest = function(tc, trtc, callback){
       if(!result || result.err) {
         //console.log(result);
       }
-      if(result.runnerCase) trtc.runnerCase = result.runnerCase;
+      if(result.runnerCase) {
+        trtc.runnerCase = result.runnerCase;
+        trtc.runnerCase.headers = util.stringify(result.runnerCase.headers, true);
+      }
       callback(result);
     };
     trtc.executionTime = new Date().getTime() - trtc.executionTime;
@@ -421,8 +609,8 @@ var assert = function(validatorIdCodeMap, ass, ops){
     if(typeof util.v_asserts._[ass.type] === 'function'){
       ret.passed = util.v_asserts._[ass.type](ops.ac==='V_PATH_NOT_RESOLVED'?undefined:ops.ac,ops.ex);
       ret.assertion = { name : ass.name, type : ass.type };
-      ret.assertion.property = ass.property || '';
-      ret.assertion.value = ass.value || '';
+      ret.assertion.property = processUtil.getReadableString(ass.property,true);
+      ret.assertion.value = processUtil.getReadableString(ass.value,true);
       ret.assertion.actual = ops.setActual || ops.ac;
     }
   }
@@ -430,19 +618,18 @@ var assert = function(validatorIdCodeMap, ass, ops){
 };
 
 
-var extractVarsFrom = function(tc, result, headers) {
+var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
     var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
-    var variables = ReplaceModule.getVars();
-    tc.tcVariables.forEach(function(vr){
-      if(vr.name && vr.path){
+    (tcVariables || []).forEach(function(vr){
+      if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
           opts.prefixes[0] = result.content;
           opts.prefixes[1].headers = headers;
           opts.prefixes[1].statusCode = result.statusCode;
-          variables[vr.name] = ReplaceModule.replace(vr.path,opts);
+          VARS[vr.name] = ReplaceModule.replace(vr.path,opts);
         } else if(result.resultType === 'json') {
-          variables[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
+          VARS[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
         }
       }
     });
@@ -450,12 +637,12 @@ var extractVarsFrom = function(tc, result, headers) {
   return;
 };
 
-var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
+var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
-    ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
+    ass.property = processUtil.replacingString(ass.property, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
-    ass.value = processUtil.replacingString(ass.value, curVars, publicConfiguration);
+    ass.value = processUtil.getReplacedStringifiedObject(ass.value, { dontParse : true });
   } else delete ass.value;
   switch(ass.name){
     case 'statusCode' :
@@ -479,28 +666,28 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
 
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
-  var actualResults = runnerModel.result, curVars = runnerModel.variable,
-    toSendTC = (typeof tc.toJSON == 'function') ? tc.toJSON() : tc, toSendTRTC = { headers : headersMap },
+  var actualResults = runnerModel.result,
+    toSendTC = _.extend(tc.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
-  var toSet = setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
+  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
   runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
-var setFinalExpContent = function(er,ar,curVars){
+var setFinalExpContent = function(er,ar){
   var toSet = false;
   if(util.isWithVars(er.content)){
-    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
+    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR;
     toSet = true;
-    if(er.content === spclFl) {
+    if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
-        exCont = processUtil.getReplacedStringifiedObject(exCont);
         if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
         er.content = util.stringify(exCont);
       }
@@ -553,10 +740,10 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
   var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
-      findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
+      findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
-  tc.assertions.forEach(function(ass){
+  (tc.getTc('assertions') || []).forEach(function(ass){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
@@ -593,7 +780,11 @@ function vRunner(opts){
   }
   var dk, error, queryObject;
   for(dk in options){
-    this[dk] = options[dk];
+    if(dk === 'authorizations'){
+      MAIN_AUTHORIZATIONS = options[dk];
+    } else {
+      this[dk] = options[dk];
+    }
   }
   if(util.isObject(opts)){
     for(dk in opts){
@@ -632,7 +823,68 @@ function vRunner(opts){
   });
 };
 
+var setupLoopAlgo = function(runModelIndex, noUpdate){
+  var runModel = MAIN_COLLECTION[runModelIndex];
+  if(runModel){
+    var tsId = runModel.testSuiteId;
+    var lp = LOOPS.filter(function(lp){ return lp.endTCId === runModel.id && lp.testSuiteId === tsId; })[0];
+    if(lp){
+      var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
+      if(typeof nIndex === 'number'){
+        var stMod = MAIN_COLLECTION[nIndex];
+        if(stMod && tsId === stMod.testSuiteId){
+          lps = this.shouldLoop(lp, noUpdate);
+          if(lps === 0){
+            runModel.condition = 'false';
+            return false;
+          } else if((!(noUpdate)) && nIndex !== -1 && nIndex <= runModelIndex && lps){
+            this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
+            (VARS.$)++;
+            return nIndex;
+          }
+        }
+      }
+    }
+  }
+};
+
+var shouldLoop = function(lp, noUpdate){
+  if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
+    var src = processUtil.replacingString(lp.source);
+    var nm = Math.floor(src), isNN = isNaN(nm);
+    if(isNN){
+      try {
+        if(typeof src === 'string'){
+          src = JSON.parse(src);
+        }
+        lp.maxCount = Array.isArray(src) ? src.length : false;
+      } catch(err){
+        lp.maxCount = false;
+      }
+    } else {
+      lp.maxCount = nm;
+    }
+    if(lp.maxCount === false) {
+      if(processUtil.isConditionPassed(src, false) === true) {
+        return true;
+      } else {
+        return 0;
+      }
+    }
+  }
+  if(typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1)){
+    return true;
+  } else {
+    if(!noUpdate) { VARS.$ = 0; }
+    if(lp.maxCount === 0){ return 0; }
+    return false;
+  }
+};
+
 vRunner.prototype = new events.EventEmitter;
+
+vRunner.prototype.shouldLoop = shouldLoop;
+vRunner.prototype.setupLoopAlgo = setupLoopAlgo;
 
 var getRemarks = function(total, passed, failed, notExecuted, notRunnable){
   var rem = '';
@@ -662,6 +914,7 @@ vRunner.prototype.initAll = function(total){
 
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
+  if(!stopped) stopped = this.stopped;
   request({ method : 'PATCH', url : url, body : {
     statistics: {
       total : report.total,
@@ -669,8 +922,10 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       failed: report.failed,
       notExecuted: report.notExecuted,
       notRunnable: report.notRunnable
-    }, remarks : error ? (stopped ? 'Test run was stopped by user.' : util.cropString(util.stringify(error), RUNNER_LIMIT))
-                : getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
+    }, remarks : error ?
+        (stopped ? (typeof stopped === 'string' ? stopped : 'Test run was stopped by user.')
+          : util.cropString(util.stringify(error), RUNNER_LIMIT)) :
+        getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
   }}, function(err,response,body){
     if(error) self.emit('end',error);
     else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
@@ -712,6 +967,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     if(count){
       toSend.count = count;
       toSend.testRunId = self.testRunId;
+      toSend.loopIndex = VARS.$;
       toSend.filterData = self.filters;
     } else {
       toSend.list = self.pendingTrtc;
@@ -760,7 +1016,7 @@ vRunner.prototype.run = function(next){
         else {
           if(Array.isArray(auths)){
             for(var k=0;k<auths.length;k++){
-              self.authorizations[auths[k].id] = getAuthHeader(auths[k]);
+              MAIN_AUTHORIZATIONS[auths[k].id] = getAuthHeader(auths[k]);
             }
           }
           cb();
@@ -840,8 +1096,7 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          self.variables = processUtil.configureVarCol(vars, {
-            selectedEnvironment : self.selectedEnvironment, startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR });
+          processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment });
           cb();
         }
       });
@@ -860,15 +1115,18 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       fetchAndServe(self.url, self.pageSize, function(tc,cb0){
+        tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
+        tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
         var trtc = {
           result: {
             headers : [],
-            statusCode : 200,
+            statusCode : 0,
             content: '',
             resultType: 'text'
           },
           isExecuted: false,
           testRunId : self.testRunId,
+          loopIndex : VARS.$,
           testCaseId : tc.id,
           executionTime: 0
         };
@@ -900,56 +1158,65 @@ vRunner.prototype.run = function(next){
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
             }
-            if(self.stopped){
-              self.kill();
-            }
             else cb0();
           });
         };
-        if(tc.runnable){
-          tc = processUtil.preProcessForSearchAndReplace(tc, { startVarExpr : START_VAR_EXPR, endVarExpr : END_VAR_EXPR }, self.variables);
-          if(tc.condition) {
-            tc.url = processUtil.completeURL(tc.url, tc.params);
-            if(tc.authorizationId){
-              if(typeof self.authorizations[tc.authorizationId] === 'function'){
-                tc.authorizationHeader = self.authorizations[tc.authorizationId](tc);
-              } else tc.authorizationHeader = self.authorizations[tc.authorizationId];
+        var handleAPIResponse = function(result, err, notRunnable){
+          var isPassed = false, remarks = '', isExecuted = false;
+          if(!result) {
+            remarks = 'Test run was stopped by user.';
+          } else if(notRunnable) {
+            if(typeof notRunnable === 'string'){
+              trtc.result.content = notRunnable;
+              remarks = 'Test case condition was failed, so was not runnable.';
+            } else {
+              remarks = 'Test case was not runnable.';
             }
-            trtc.executionTime = new Date().getTime();
-            fireRequest(tc,trtc,function(result){
-              var isPassed = false, remarks = '', isExecuted = false;
-              if(result === undefined || result === null) {
-                remarks = 'An unknown error occurred while receiving response for the Test case.';
-              } else if(result.err) {
-                remarks = 'An error has occurred while executing this testcase. Error logged : '+JSON.stringify(result.err);
-              } else if(!result.response) {
-                isExecuted = true;
-                remarks = 'No response received for this test case.';
-              } else {
-                isExecuted = true;
-                var actualResults = getActualResults(result.response);
-                trtc.result = actualResults;
-                extractVarsFrom(tc, actualResults, result.response.headers);
-                isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-              }
-              if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
-                self.stopped = true;
-              }
-
-              if(!trtc.remarks) trtc.remarks = remarks;
-              trtc.isExecuted = isExecuted;
-              trtc.isPassed = (isPassed === true)?true:false;
-              over();
-            });
+          } else if(result === undefined || result === null) {
+            remarks = 'An unknown error occurred while receiving response for the Test case.';
+          } else if(err) {
+            remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
           } else {
-            tc.runnable = false;
-            trtc.result.content = JSON.stringify(tc.condition);
-            trtc.remarks = 'Test case condition was failed, so was not runnable.';
-            over();
+            isExecuted = true;
+            var actualResults = getActualResults(result);
+            trtc.result = actualResults;
+            extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
+            isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
           }
-        } else {
-          trtc.remarks = 'Test case was not runnable.';
+          isPassed = isPassed === true;
+          if(report.total >= (RUNNER_LIMIT - 1)){
+            self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
+          } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
+            self.stopped = true;
+          }
+          if(!trtc.remarks) trtc.remarks = remarks;
+          trtc.isExecuted = isExecuted;
+          trtc.isPassed = isPassed;
           over();
+        };
+        var forNotRunnable = function(cond){
+          setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
+          handleAPIResponse(null, null, cond || true);
+        };
+        if(tc.getTc('runnable') === false){
+          forNotRunnable();
+        } else {
+          processUtil.extractPathVars(tc.params);
+          if(tc.shouldRun()){
+            trtc.executionTime = new Date().getTime();
+            var afterWait = function(){
+              fireRequest(tc.getTcToExecute(),trtc,function(result){
+                handleAPIResponse(result.response, result.err);
+              });
+            };
+            var wf = tc.getTc('waitFor');
+            if(wf) setTimeout(afterWait, wf*1000);
+            else afterWait();
+          } else {
+            forNotRunnable(tc.currentCondition);
+          }
         }
       },cb, self);
     }
