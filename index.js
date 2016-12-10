@@ -234,6 +234,24 @@ var request = require('request').defaults({jar: true, json: true}),
         return VARS;
       },
 
+      isConditionPassed : function(mk,def){
+        if(def !== false) def = true;
+        if(typeof mk === 'string'){
+          if(!(mk.length)){
+            return def;
+          }
+          try {
+            return Boolean(eval(mk));
+          } catch(er){
+            return def;
+          }
+        } else if(mk !== undefined && mk !== null){
+          return Boolean(mk);
+        } else {
+          return def;
+        }
+      },
+
       setupHeaderInTc : function(tc){
         var setHeaderFromRaw = false;
 
@@ -302,17 +320,17 @@ RunnerModel.prototype = {
         }
         return ar;
       };
-      var vl = this[prop];
+      var vl = this[prop], ts = vl;
       if(['raw','expectedResults'].indexOf(prop) !== -1){
-        var ret = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
-        if(ret.hasOwnProperty('content') && withReplace){
-          ret.content = ReplaceModule.replace(ret.content);
+        var ts = _.extend({},vl,vl.hasOwnProperty('headers') ? { headers : forArray(vl.headers) } : undefined);
+        if(ts.hasOwnProperty('content') && withReplace){
+          ts.content = processUtil.getReplacedStringifiedObject(ts.content, { castInString : true });
         }
       }
       if(['headers','params','assertions'].indexOf(prop) !== -1){
-        return forArray(vl);
+        return forArray(ts);
       }
-      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(vl) : vl;
+      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
     }
   },
 
@@ -337,20 +355,7 @@ RunnerModel.prototype = {
   shouldRun : function(){
     var mk = this.getTc('condition',true);
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
-    if(typeof mk === 'string'){
-      if(!(mk.length)){
-        return true;
-      }
-      try {
-        return Boolean(eval(mk));
-      } catch(er){
-        return true;
-      }
-    } else if(mk !== undefined && mk !== null){
-      return Boolean(mk);
-    } else {
-      return true;
-    }
+    return processUtil.isConditionPassed(mk);
   }
 };
 
@@ -400,7 +405,7 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
             }
           });
         }
-        pages[page] = ln;
+        pages[page] = ln + (typeof pages[page-1] === 'number' ? pages[page-1] : 0);
         vrunner.emit('new_page', page);
       } else {
         next('Test cases not found.');
@@ -423,6 +428,7 @@ var findLastTcWithId = function(currentIndex, findWithId){
 var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
     if(index < en && index < vrunner.totalRecords){
+      vrunner.setupLoopAlgo(index,true);
       cb(MAIN_COLLECTION[index], function(){
         var nIndex = vrunner.setupLoopAlgo(index);
         forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
@@ -632,9 +638,9 @@ var extractVarsFrom = function(tcVariables, result, headers) {
   return;
 };
 
-var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONContent, executionTime){
+var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
-    ass.property = processUtil.replacingString(ass.property, curVars, publicConfiguration);
+    ass.property = processUtil.replacingString(ass.property, publicConfiguration);
   } else delete ass.property;
   if(!util.v_asserts.shouldNotAddValue(ass.name, ass.type, config)) {
     ass.value = processUtil.getReplacedStringifiedObject(ass.value, { dontParse : true });
@@ -662,28 +668,27 @@ var findExAndAc = function(curVars, headersMap, ass, actualResults, actualJSONCo
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
   var actualResults = runnerModel.result,
-    toSendTC = _.extend(runnerModel.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTC = _.extend(tc.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
-  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults, curVars);
+  setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
   runnerModel.expectedContent = toSendTC.expectedResults.content;
 };
 
 
-var setFinalExpContent = function(er,ar,curVars){
+var setFinalExpContent = function(er,ar){
   var toSet = false;
   if(util.isWithVars(er.content)){
-    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
+    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR;
     toSet = true;
-    if(er.content === spclFl) {
+    if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
-        exCont = processUtil.getReplacedStringifiedObject(exCont);
         if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
         er.content = util.stringify(exCont);
       }
@@ -736,7 +741,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
   var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
-      findEx = findExAndAc.bind(undefined, runnerModel.variable, headers),
+      findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
   (tc.getTc('assertions') || []).forEach(function(ass){
@@ -819,7 +824,7 @@ function vRunner(opts){
   });
 };
 
-var setupLoopAlgo = function(runModelIndex){
+var setupLoopAlgo = function(runModelIndex, noUpdate){
   var runModel = MAIN_COLLECTION[runModelIndex];
   if(runModel){
     var tsId = runModel.testSuiteId;
@@ -828,37 +833,51 @@ var setupLoopAlgo = function(runModelIndex){
       var lpStart = lp.startTCId, nIndex = findLastTcWithId(runModelIndex,lpStart);
       if(typeof nIndex === 'number'){
         var stMod = MAIN_COLLECTION[nIndex];
-        if(stMod && tsId === stMod.testSuiteId && nIndex !== -1 && nIndex <= runModelIndex && this.shouldLoop(lp)){
-          this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
-          (VARS.$)++;
-          return nIndex;
+        if(stMod && tsId === stMod.testSuiteId){
+          lps = this.shouldLoop(lp, noUpdate);
+          if(lps === 0){
+            runModel.condition = 'false';
+            return false;
+          } else if((!(noUpdate)) && nIndex !== -1 && nIndex <= runModelIndex && lps){
+            this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
+            (VARS.$)++;
+            return nIndex;
+          }
         }
       }
     }
   }
 };
 
-var shouldLoop = function(lp){
+var shouldLoop = function(lp, noUpdate){
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
     var src = processUtil.replacingString(lp.source);
-    var nm = Math.floor(src);
-    if(isNaN(nm)){
+    var nm = Math.floor(src), isNN = isNaN(nm);
+    if(isNN){
       try {
         if(typeof src === 'string'){
           src = JSON.parse(src);
         }
-        lp.maxCount = Array.isArray(src) ? src.length : 0;
+        lp.maxCount = Array.isArray(src) ? src.length : false;
       } catch(err){
-        lp.maxCount = 0;
+        lp.maxCount = false;
       }
     } else {
       lp.maxCount = nm;
     }
+    if(lp.maxCount === false) {
+      if(processUtil.isConditionPassed(src, false) === true) {
+        return true;
+      } else {
+        return 0;
+      }
+    }
   }
-  if(lp.maxCount > ((VARS.$)+1)){
+  if(typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1)){
     return true;
   } else {
-    VARS.$ = 0;
+    if(!noUpdate) { VARS.$ = 0; }
+    if(lp.maxCount === 0){ return 0; }
     return false;
   }
 };
@@ -949,6 +968,7 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     if(count){
       toSend.count = count;
       toSend.testRunId = self.testRunId;
+      toSend.loopIndex = VARS.$;
       toSend.filterData = self.filters;
     } else {
       toSend.list = self.pendingTrtc;
@@ -1101,7 +1121,7 @@ vRunner.prototype.run = function(next){
         var trtc = {
           result: {
             headers : [],
-            statusCode : 200,
+            statusCode : 0,
             content: '',
             resultType: 'text'
           },
@@ -1167,7 +1187,7 @@ vRunner.prototype.run = function(next){
             setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
           }
           isPassed = isPassed === true;
-          if(report.total > RUNNER_LIMIT){
+          if(report.total >= (RUNNER_LIMIT - 1)){
             self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
           } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
             self.stopped = true;
@@ -1179,7 +1199,7 @@ vRunner.prototype.run = function(next){
         };
         var forNotRunnable = function(cond){
           setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
-          self.handleAPIResponse(null, null, cond || true);
+          handleAPIResponse(null, null, cond || true);
         };
         if(tc.getTc('runnable') === false){
           forNotRunnable();
