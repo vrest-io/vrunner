@@ -682,12 +682,12 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
 var setFinalExpContent = function(er,ar){
   var toSet = false;
   if(util.isWithVars(er.content)){
-    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR, spclFl = '"'+spcl+'"';
+    var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR;
     toSet = true;
-    if(er.content === spclFl) {
+    if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spclFl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
       if(typeof exCont === 'object'){
         if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
         er.content = util.stringify(exCont);
