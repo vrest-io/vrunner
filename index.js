@@ -428,12 +428,9 @@ var findLastTcWithId = function(currentIndex, findWithId){
 var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
     if(index < en && index < vrunner.totalRecords){
-      var nIndex = vrunner.setupLoopAlgo(index);
-      if(typeof nIndex !== 'number'){
-        nIndex = index;
-      }
-      cb(MAIN_COLLECTION[nIndex], function(){
-        forEachTc(nIndex+1);
+      cb(MAIN_COLLECTION[index], function(){
+        var nIndex = vrunner.setupLoopAlgo(index);
+        forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
       });
     } else {
       next();
