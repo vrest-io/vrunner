@@ -859,6 +859,7 @@ var shouldLoop = function(lp, noUpdate){
   var inLimits = (VARS.$ < (LOOP_LIMIT));
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
     var src = processUtil.replacingString(lp.source);
+    if(src === true){ return inLimits; }
     var nm = Math.floor(src), isNN = isNaN(nm);
     if(isNN){
       try {
