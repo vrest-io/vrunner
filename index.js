@@ -24,6 +24,7 @@ var request = require('request').defaults({jar: true, json: true}),
     V_BASE_URL = 'https://vrest.io/',
     publicConfiguration = {},
     RUNNER_LIMIT = 5000,
+    LOOP_LIMIT = 100,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
     START_VAR_EXPR = '{{',
@@ -235,18 +236,24 @@ var request = require('request').defaults({jar: true, json: true}),
       },
 
       isConditionPassed : function(mk,def){
+        var evl;
         if(def !== false) def = true;
         if(typeof mk === 'string'){
           if(!(mk.length)){
             return def;
           }
           try {
-            return Boolean(eval(mk));
+            evl = eval(mk);
           } catch(er){
             return def;
           }
         } else if(mk !== undefined && mk !== null){
-          return Boolean(mk);
+          evl = mk;
+        }
+        if(evl === true || evl === 'true') {
+          return true;
+        } else if(evl === false || evl === 'false') {
+          return false;
         } else {
           return def;
         }
@@ -849,6 +856,7 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
 };
 
 var shouldLoop = function(lp, noUpdate){
+  var inLimits = (VARS.$ < (LOOP_LIMIT));
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
     var src = processUtil.replacingString(lp.source);
     var nm = Math.floor(src), isNN = isNaN(nm);
@@ -872,7 +880,7 @@ var shouldLoop = function(lp, noUpdate){
       }
     }
   }
-  if(typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1)){
+  if(inLimits && (typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1))){
     return true;
   } else {
     if(!noUpdate) { VARS.$ = 0; }
