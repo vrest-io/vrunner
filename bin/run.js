@@ -54,6 +54,7 @@ opts.forEach(function(arg){
     case '-H':
     case '--help':
     default :
+      console.log('    --> INVALID ARGUMENTS PROVIDED ...! Try again with valid arguments.');
       showHelp = true;
   }
 });
