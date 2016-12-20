@@ -987,12 +987,12 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
         self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
     });
-    next(null);
+    return next(null);
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
     else next(null);
-  } else if(trtc === 'STOPPED'){
+  } else if(this.stopped){
     sendNow();
   } else {
     this.pendingTrtc.push(trtc);
@@ -1166,14 +1166,15 @@ vRunner.prototype.run = function(next){
             if(err) {
               //console.log('Error occurred while saving execution results : ', err);
               self.emit('warning',err);
-            }
-            else cb0();
+            } else if(self.stopped){
+              self.kill();
+            } else cb0();
           });
         };
         var handleAPIResponse = function(result, err, notRunnable){
           var isPassed = false, remarks = '', isExecuted = false;
           if(!result) {
-            remarks = 'Test run was stopped by user.';
+            remarks = self.stopped ? 'Test run was stopped by user.' : 'No response available.';
           } else if(notRunnable) {
             if(typeof notRunnable === 'string'){
               trtc.result.content = notRunnable;
@@ -1209,7 +1210,7 @@ vRunner.prototype.run = function(next){
           setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
           handleAPIResponse(null, null, cond || true);
         };
-        if(tc.getTc('runnable') === false){
+        if(self.stopped || tc.getTc('runnable') === false){
           forNotRunnable();
         } else {
           processUtil.extractPathVars(tc.params);
