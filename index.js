@@ -69,6 +69,8 @@ var request = require('request').defaults({jar: true, json: true}),
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
 
+    var TotalRecords = 0;
+
     var findTcVarsName = function(what,which){
       var ar = what.tcVariables || [];
       if(Array.isArray(ar)){
@@ -396,8 +398,10 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
       } else if(Array.isArray(body.output)){
         var ln = body.output.length;
         for(var n =0;n<ln;n++){
+          body.output[n].position = TotalRecords + n;
           MAIN_COLLECTION.push(new RunnerModel(processUtil.setupHeaderInTc(body.output[n])));
         }
+        TotalRecords += ln;
         if(!page){
           if(Array.isArray(body.loops)){
             LOOPS = body.loops;
