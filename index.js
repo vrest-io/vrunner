@@ -844,7 +844,7 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
       if(typeof nIndex === 'number'){
         var stMod = MAIN_COLLECTION[nIndex];
         if(stMod && tsId === stMod.testSuiteId){
-          lps = this.shouldLoop(lp, noUpdate);
+          var lps = this.shouldLoop(lp, noUpdate);
           if(lps === 0){
             runModel.condition = 'false';
             return false;
