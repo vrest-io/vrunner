@@ -859,12 +859,20 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
   }
 };
 
+var returnFalseLoop = function(lp, inLimits, noUpdate){
+  if(!noUpdate) { VARS.$ = 0; }
+  return (lp.maxCount === 0) ? 0 : false;
+};
+
 var shouldLoop = function(lp, noUpdate){
   var inLimits = (VARS.$ < (LOOP_LIMIT));
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
-    var src = processUtil.replacingString(lp.source);
+    var isNN = true, src = processUtil.replacingString(lp.source);
     if(src === true){ return inLimits; }
-    var nm = Math.floor(src), isNN = isNaN(nm);
+    var nm = src;
+    if(typeof src === 'string' || typeof src === 'number'){
+      nm = Math.floor(src); isNN = isNaN(nm);
+    }
     if(isNN){
       try {
         if(typeof src === 'string'){
@@ -879,18 +887,17 @@ var shouldLoop = function(lp, noUpdate){
     }
     if(lp.maxCount === false) {
       if(processUtil.isConditionPassed(src, false) === true) {
-        return true;
+        return inLimits;
       } else {
-        return 0;
+        lp.maxCount = 0;
+        return returnFalseLoop(lp, inLimits, noUpdate);
       }
     }
   }
   if(inLimits && (typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1))){
     return true;
   } else {
-    if(!noUpdate) { VARS.$ = 0; }
-    if(lp.maxCount === 0){ return 0; }
-    return false;
+    return returnFalseLoop(lp, inLimits, noUpdate);
   }
 };
 
