@@ -24,6 +24,7 @@ var request = require('request').defaults({jar: true, json: true}),
     V_BASE_URL = 'https://vrest.io/',
     publicConfiguration = {},
     RUNNER_LIMIT = 5000,
+    WAIT_BEFORE_KILL = false,
     LOOP_LIMIT = 100,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -523,8 +524,10 @@ var getAuthHeader = function(ath){
   }
 };
 
-var fireRequest = function(tc, trtc, callback){
-  runner({ testcase : tc },function(result){
+var fireRequest = function(tc, trtc, timeout, callback){
+  var toSend = { testcase : tc }, timeout = Math.floor(timeout);
+  if(!(isNaN(timeout))){ toSend.timeout = timeout*1000; }
+  runner(toSend,function(result){
     var afterWait = function(){
       if(!result || result.err) {
         //console.log(result);
@@ -831,6 +834,8 @@ function vRunner(opts){
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
     self.stopped = true;
+    self.kill();
+    runner.ABORT();
   });
 };
 
@@ -844,7 +849,7 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
       if(typeof nIndex === 'number'){
         var stMod = MAIN_COLLECTION[nIndex];
         if(stMod && tsId === stMod.testSuiteId){
-          lps = this.shouldLoop(lp, noUpdate);
+          var lps = this.shouldLoop(lp, noUpdate);
           if(lps === 0){
             runModel.condition = 'false';
             return false;
@@ -859,12 +864,20 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
   }
 };
 
+var returnFalseLoop = function(lp, inLimits, noUpdate){
+  if(!noUpdate) { VARS.$ = 0; }
+  return (lp.maxCount === 0) ? 0 : false;
+};
+
 var shouldLoop = function(lp, noUpdate){
   var inLimits = (VARS.$ < (LOOP_LIMIT));
   if(typeof lp.maxCount !== 'number' || isNaN(lp.maxCount)){
-    var src = processUtil.replacingString(lp.source);
+    var isNN = true, src = processUtil.replacingString(lp.source);
     if(src === true){ return inLimits; }
-    var nm = Math.floor(src), isNN = isNaN(nm);
+    var nm = src;
+    if(typeof src === 'string' || typeof src === 'number'){
+      nm = Math.floor(src); isNN = isNaN(nm);
+    }
     if(isNN){
       try {
         if(typeof src === 'string'){
@@ -879,18 +892,17 @@ var shouldLoop = function(lp, noUpdate){
     }
     if(lp.maxCount === false) {
       if(processUtil.isConditionPassed(src, false) === true) {
-        return true;
+        return inLimits;
       } else {
-        return 0;
+        lp.maxCount = 0;
+        return returnFalseLoop(lp, inLimits, noUpdate);
       }
     }
   }
   if(inLimits && (typeof lp.maxCount === 'number' && lp.maxCount > ((VARS.$)+1))){
     return true;
   } else {
-    if(!noUpdate) { VARS.$ = 0; }
-    if(lp.maxCount === 0){ return 0; }
-    return false;
+    return returnFalseLoop(lp, inLimits, noUpdate);
   }
 };
 
@@ -946,23 +958,19 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   });
 };
 
-vRunner.prototype.kill = function(next){
+vRunner.prototype.kill = function(){
   var self = this;
-  self.sendToServer(self.instanceURL,'OVER',function(err){
+  self.sendToServer(self.instanceURL,'OVER');
+  var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
+  self.sendToServer(self.instanceURL,ne);
+  self.saveReport(null,self.instanceURL + '/g/testrun/'+self.testRunId, {
+    total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
+    failed : self.noFailed, notExecuted : ne + self.noNotExecuted
+  }, function(err){
     if(err) self.emit('warning',err);
-    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
-    self.sendToServer(self.instanceURL,ne,function(err){
-      if(err) self.emit('warning',err);
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
-        total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
-        failed : self.noFailed, notExecuted : ne + self.noNotExecuted
-      }, function(err){
-        if(err) self.emit('warning',err);
-        self.emit('log',"\nTest Run Stopped.");
-        process.exit(1);
-      }, true);
-    });
-  });
+    self.emit('log',"\nTest Run Stopped.");
+    process.exit(1);
+  }, true);
 };
 
 vRunner.prototype.sigIn = function(next){
@@ -973,7 +981,7 @@ vRunner.prototype.sigIn = function(next){
   });
 };
 
-vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
+vRunner.prototype.sendToServer = function(instanceURL,trtc){
   var self = this;
   var sendNow = function(count){
     var toSend = {};
@@ -986,22 +994,21 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
       toSend.list = self.pendingTrtc;
     }
     self.pendingTrtc = [];
-    request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
+    var lastOp = function(err,res,body){
       if(err || !body || body.error) {
-        self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+        self.emit('warning',
+          util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
-    });
-    return next(null);
+    };
+    request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, lastOp);
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
-    else next(null);
-  } else if(this.stopped){
-    sendNow();
-  } else {
+  } else if(typeof trtc === 'number' && trtc && this.stopped){
+    sendNow(trtc);
+  } else if(typeof trtc === 'object' && trtc) {
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
-    else next(null);
   }
 };
 
@@ -1166,14 +1173,8 @@ vRunner.prototype.run = function(next){
             self.emit('testcase',null,tc,trtc);
           }
           trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
-          self.sendToServer(self.instanceURL,trtc,function(err){
-            if(err) {
-              //console.log('Error occurred while saving execution results : ', err);
-              self.emit('warning',err);
-            } else if(self.stopped){
-              self.kill();
-            } else cb0();
-          });
+          self.sendToServer(self.instanceURL,trtc);
+          if(!self.stopped){ cb0(); }
         };
         var handleAPIResponse = function(result, err, notRunnable){
           var isPassed = false, remarks = '', isExecuted = false;
@@ -1221,7 +1222,7 @@ vRunner.prototype.run = function(next){
           if(tc.shouldRun()){
             trtc.executionTime = new Date().getTime();
             var afterWait = function(){
-              fireRequest(tc.getTcToExecute(),trtc,function(result){
+              fireRequest(tc.getTcToExecute(),trtc, self.timeout, function(result){
                 handleAPIResponse(result.response, result.err);
               });
             };
@@ -1238,14 +1239,9 @@ vRunner.prototype.run = function(next){
   util.series(tasks,function(err, data){
     if(err) self.emit('error',err);
     if(data === 'VRUN_OVER') return;
-    self.sendToServer(self.instanceURL,'OVER',function(err){
-      if(err) {
-        self.emit('warning',err);
-        //console.log('Error occurred while saving execution results : ', err);
-      }
-      self.emit('log', 'Saving test run execution report ...');
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
-    });
+    self.sendToServer(self.instanceURL,'OVER');
+    self.emit('log', 'Saving test run execution report ...');
+    self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
   });
 };
 

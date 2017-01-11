@@ -40,6 +40,10 @@ opts.forEach(function(arg){
     case '--debug':
       options.debugging = (value === 'true');
       break;
+    case '-T':
+    case '--timeout':
+      options.timeout = value;
+      break;
     case '--vrestbaseurl':
       options.vRESTBaseUrl = value;
       break;
@@ -74,6 +78,9 @@ if(showHelp){
   console.log('                       instance and select Test Cases tab. Now click on button "Copy Current Test Case List URL" available');
   console.log('                       in Left hand side, below the "Filters section". Provide the copied URL in this option. Ensure that');
   console.log('                       you enclose the URL in double quotes.');
+  console.log('    -T, --timeout    : How much to wait for response after execution of test case.');
+  console.log('                       It should be provided in unit of seconds.');
+  console.log('                       e.g. -T=3 will wait for 3 seconds for response');
   console.log('    -N, --env        : Provide the environment name to initialize the global variables.');
   console.log('                       By default environment `Default` is used.');
   console.log('    -D, --debug      : Should be set if you want debugging console logs.');
