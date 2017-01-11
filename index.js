@@ -73,6 +73,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
+    VARS.$tc = {};
 
     var TotalRecords = 0;
 
@@ -546,6 +547,9 @@ var forOneTc = function(report,tc,cb0){
     if(!trtc.remarks) trtc.remarks = remarks;
     trtc.isExecuted = isExecuted;
     trtc.isPassed = isPassed;
+    VARS.$tc.results = util.getModelVal(trtc, 'result');
+    VARS.$tc.isExecuted = util.getModelVal(trtc,'isExecuted');
+    VARS.$tc.isPassed = util.getModelVal(trtc,'isPassed');
     over();
   };
   var forNotRunnable = function(cond){
@@ -559,7 +563,12 @@ var forOneTc = function(report,tc,cb0){
     if(tc.shouldRun()){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
-        fireRequest(tc.getTcToExecute(),trtc, self.timeout, function(result){
+        var tcToExecute = tc.getTcToExecute();
+        if(!(tc.canHook)){
+          VARS.$tc = tcToExecute;
+          VARS.$tc.expectedResults = tc.getTc('expectedResults',true);
+        }
+        fireRequest(tcToExecute,trtc, self.timeout, function(result){
           handleAPIResponse(result.response, result.err);
         });
       };
@@ -884,7 +893,8 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
   var actualResults = runnerModel.result,
-    toSendTC = _.extend(tc.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTC = _.extend(tc.lastSend, { expectedResults :
+      ((VARS.$tc.expectedResults) || tc.getTc('expectedResults',true)) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
@@ -1313,6 +1323,13 @@ vRunner.prototype.run = function(next){
       fetchAndServe(self.url, self.pageSize, self.forOneTc.bind(self,report), cb, self);
     },
     function(cb){
+      var rmk = false;
+      if((typeof self.stopped === 'string' && self.stopped)) {
+        rmk = self.stopped;
+      } else if(self.stopped === true) {
+        rmk = 'Execution stopped by user.';
+      }
+      VARS.$tc = { stats : report, stopped : self.stopped, remarks : rmk };
       callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,cb);
     }
   ];
