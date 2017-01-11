@@ -295,6 +295,7 @@ function RunnerModel(ob){
       self[ky] = ob[ky];
     }
   });
+  this.canHook = true;
 };
 
 RunnerModel.prototype = {
@@ -562,7 +563,7 @@ var forOneTc = function(report,tc,cb0){
   }
 };
 
-function HookRunner(trId,instanceURL,validatorIdCodeMap,stopUponFirstFailureInTestRun,timeout){
+function HookRunner(trId,instanceURL,validatorIdCodeMap,timeout){
   this.testRunId = trId;
   this.noPassed = 0; this.noFailed = 0; this.noNotExecuted = 0; this.notRunnable = 0;
   this.report = { noPassed : this.noPassed, noFailed : this.noFailed,
@@ -571,7 +572,7 @@ function HookRunner(trId,instanceURL,validatorIdCodeMap,stopUponFirstFailureInTe
   this.filters = {};
   this.stopped = false;
   this.instanceURL = instanceURL;
-  this.stopUponFirstFailureInTestRun = stopUponFirstFailureInTestRun;
+  this.stopUponFirstFailureInTestRun = false;
   this.validatorIdCodeMap = validatorIdCodeMap;
   this.timeout = timeout;
   this.pushResultName = 'testruntesthook';
@@ -630,6 +631,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     if(err || !res || res.error) return next(['Error while fetching hooks :', err||res], 'VRUN_OVER');
     res.output.forEach(function(abs){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
+      abs.canHook = false;
       if(abs.flowIndex === 0){
         PRTR_HOOK_COL.push(abs);
       } else if(abs.flowIndex === 1){
@@ -640,14 +642,10 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
         PSTR_HOOK_COL.push(abs);
       }
     });
-    PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL,
-      vrunner.validatorIdCodeMap,vrunner.stopUponFirstFailureInTestRun,vrunner.timeout);
-    POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL,
-      vrunner.validatorIdCodeMap,vrunner.stopUponFirstFailureInTestRun,vrunner.timeout);
-    PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL,
-      vrunner.validatorIdCodeMap,vrunner.stopUponFirstFailureInTestRun,vrunner.timeout);
-    PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL,
-      vrunner.validatorIdCodeMap,vrunner.stopUponFirstFailureInTestRun,vrunner.timeout);
+    PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     callOneQ(PRTR_HOOK_RUNNER,PRTR_HOOK_COL,function(){
       fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
     });
@@ -1034,7 +1032,7 @@ function vRunner(opts){
 
 var setupLoopAlgo = function(runModelIndex, noUpdate){
   var runModel = MAIN_COLLECTION[runModelIndex];
-  if(runModel){
+  if(runModel && runModel.canHook === true){
     var tsId = runModel.testSuiteId;
     var lp = LOOPS.filter(function(lp){ return lp.endTCId === runModel.id && lp.testSuiteId === tsId; })[0];
     if(lp){
