@@ -516,40 +516,46 @@ var forOneTc = function(report,tc,cb0){
   };
   var handleAPIResponse = function(result, err, notRunnable){
     var isPassed = false, remarks = '', isExecuted = false;
-    if(!result) {
-      remarks = self.stopped ? 'Test run was stopped by user.' : 'No response available.';
-    } else if(notRunnable) {
-      if(typeof notRunnable === 'string'){
-        trtc.result.content = notRunnable;
-        remarks = 'Test case condition was failed, so was not runnable.';
-      } else {
-        remarks = 'Test case was not runnable.';
-      }
-    } else if(result === undefined || result === null) {
-      remarks = 'An unknown error occurred while receiving response for the Test case.';
-    } else if(err) {
-      remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
-      setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+    if(this.stopped === true && !result) {
+      remarks = 'Test run was stopped by user.';
     } else {
-      isExecuted = true;
-      var actualResults = getActualResults(result);
-      trtc.result = actualResults;
-      extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
-      isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-      setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
-    }
-    isPassed = isPassed === true;
-    if(report.total >= (RUNNER_LIMIT - 1)){
-      self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
-    } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
-      self.stopped = true;
+      if(notRunnable) {
+        if(typeof notRunnable === 'string'){
+          trtc.result.content = notRunnable;
+          remarks = 'Test case condition was failed, so was not runnable.';
+        } else {
+          remarks = 'Test case was not runnable.';
+        }
+      } else if(err) {
+        remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+      } else if(result === undefined || result === null) {
+        remarks = 'An unknown error occurred while receiving response for the Test case.';
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+      } else {
+        isExecuted = true;
+        var actualResults = getActualResults(result);
+        trtc.result = actualResults;
+        extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
+        isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
+      }
+      isPassed = isPassed === true;
+      trtc.isExecuted = isExecuted;
+      trtc.isPassed = isPassed;
     }
     if(!trtc.remarks) trtc.remarks = remarks;
-    trtc.isExecuted = isExecuted;
-    trtc.isPassed = isPassed;
-    VARS.$tc.results = util.getModelVal(trtc, 'result');
-    VARS.$tc.isExecuted = util.getModelVal(trtc,'isExecuted');
-    VARS.$tc.isPassed = util.getModelVal(trtc,'isPassed');
+    if(tc.canHook){
+      if(report.total >= (RUNNER_LIMIT - 1)){
+        self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
+      } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
+        self.stopped = true;
+      }
+    } else {
+      VARS.$tc.results = util.getModelVal(trtc, 'result');
+      VARS.$tc.isExecuted = util.getModelVal(trtc,'isExecuted');
+      VARS.$tc.isPassed = util.getModelVal(trtc,'isPassed');
+    }
     over();
   };
   var forNotRunnable = function(cond){
@@ -1198,6 +1204,17 @@ vRunner.prototype.sigIn = function(next){
 
 vRunner.prototype.sendToServer = HookRunner.prototype.sendToServer;
 
+vRunner.prototype.afterComplete = function(report){
+  var rmk = false;
+  if((typeof this.stopped === 'string' && this.stopped)) {
+    rmk = this.stopped;
+  } else if(this.stopped === true) {
+    rmk = 'Execution stopped by user.';
+  }
+  VARS.$tc = { stats : report, stopped : this.stopped, remarks : rmk };
+  callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
+};
+
 vRunner.prototype.run = function(next){
   var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0 };
   var tasks = [
@@ -1321,19 +1338,10 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       fetchAndServe(self.url, self.pageSize, self.forOneTc.bind(self,report), cb, self);
-    },
-    function(cb){
-      var rmk = false;
-      if((typeof self.stopped === 'string' && self.stopped)) {
-        rmk = self.stopped;
-      } else if(self.stopped === true) {
-        rmk = 'Execution stopped by user.';
-      }
-      VARS.$tc = { stats : report, stopped : self.stopped, remarks : rmk };
-      callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,cb);
     }
   ];
   util.series(tasks,function(err, data){
+    self.afterComplete(report);
     if(err) self.emit('error',err);
     if(data === 'VRUN_OVER') return;
     self.sendToServer('OVER');
