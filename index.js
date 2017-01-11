@@ -523,8 +523,10 @@ var getAuthHeader = function(ath){
   }
 };
 
-var fireRequest = function(tc, trtc, callback){
-  runner({ testcase : tc },function(result){
+var fireRequest = function(tc, trtc, timeout, callback){
+  var toSend = { testcase : tc }, timeout = Math.floor(timeout);
+  if(!(isNaN(timeout))){ toSend.timeout = timeout*1000; }
+  runner(toSend,function(result){
     var afterWait = function(){
       if(!result || result.err) {
         //console.log(result);
@@ -831,6 +833,7 @@ function vRunner(opts){
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
     self.stopped = true;
+    runner.ABORT();
   });
 };
 
@@ -995,7 +998,8 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
     self.pendingTrtc = [];
     request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
       if(err || !body || body.error) {
-        self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+        self.emit('warning',
+          util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
     });
     return next(null);
@@ -1003,9 +1007,13 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
     else next(null);
-  } else if(this.stopped){
-    sendNow();
-  } else {
+  } else if(typeof trtc === 'number' && trtc){
+    if(this.stopped){
+      sendNow(trtc);
+    } else {
+      next(null);
+    }
+  } else if(typeof trtc === 'object' && trtc) {
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
     else next(null);
@@ -1228,7 +1236,7 @@ vRunner.prototype.run = function(next){
           if(tc.shouldRun()){
             trtc.executionTime = new Date().getTime();
             var afterWait = function(){
-              fireRequest(tc.getTcToExecute(),trtc,function(result){
+              fireRequest(tc.getTcToExecute(),trtc, self.timeout, function(result){
                 handleAPIResponse(result.response, result.err);
               });
             };
