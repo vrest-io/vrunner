@@ -516,7 +516,7 @@ var forOneTc = function(report,tc,cb0){
   };
   var handleAPIResponse = function(result, err, notRunnable){
     var isPassed = false, remarks = '', isExecuted = false;
-    if(this.stopped === true && !result) {
+    if(self.stopped === true && !result) {
       remarks = 'Test run was stopped by user.';
     } else {
       if(notRunnable) {
