@@ -36,6 +36,7 @@ var request = require('request').defaults({jar: true, json: true}),
     MAIN_COLLECTION = [],
     PRE_HOOK_COL = [],
     POST_HOOK_COL = [],
+    NO_OF_EXECUTED = 0,
     PRTR_HOOK_COL = [],
     PSTR_HOOK_COL = [],
     _ = {
@@ -444,9 +445,15 @@ var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
     if(index < en && index < vrunner.totalRecords){
       vrunner.setupLoopAlgo(index,true);
-      cb(MAIN_COLLECTION[index], function(){
-        var nIndex = vrunner.setupLoopAlgo(index);
-        forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
+      PRE_HOOK_RUNNER.currTcIndex = NO_OF_EXECUTED;
+      callOneQ(PRE_HOOK_RUNNER,PRE_HOOK_COL,function(){
+        cb(MAIN_COLLECTION[index], function(){
+          POST_HOOK_RUNNER.currTcIndex = NO_OF_EXECUTED - 1;
+          callOneQ(POST_HOOK_RUNNER,POST_HOOK_COL,function(){
+            var nIndex = vrunner.setupLoopAlgo(index);
+            forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
+          });
+        });
       });
     } else {
       next();
@@ -474,12 +481,14 @@ var forOneTc = function(report,tc,cb0){
     },
     isExecuted: false,
     testRunId : self.testRunId,
-    loopIndex : VARS.$,
+    loopIndex : typeof self.loopIndex === 'number' ? self.loopIndex : VARS.$,
+    tcIndex : typeof self.currTcIndex === 'number' ? self.currTcIndex : NO_OF_EXECUTED,
     testCaseId : tc.id,
     executionTime: 0
   };
   var over = function(){
     report.total++;
+    if(tc.canHook){ NO_OF_EXECUTED++; }
     if(trtc.isExecuted){
       if(trtc.isPassed) {
         report.passed++;
@@ -574,6 +583,8 @@ function HookRunner(trId,instanceURL,validatorIdCodeMap,timeout){
   this.instanceURL = instanceURL;
   this.stopUponFirstFailureInTestRun = false;
   this.validatorIdCodeMap = validatorIdCodeMap;
+  this.loopIndex = 0;
+  this.currTcIndex = 0;
   this.timeout = timeout;
   this.pushResultName = 'testruntesthook';
 };
@@ -622,6 +633,7 @@ var callOneQ = function(withRunner,qu,after,ind){
     return after();
   }
   withRunner.forOneTc(withRunner.report,qu[ind],function(){
+    withRunner.loopIndex++;
     callOneQ(withRunner,qu,after,ind+1);
   });
 };
