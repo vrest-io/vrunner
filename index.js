@@ -1169,13 +1169,11 @@ vRunner.prototype.run = function(next){
               report.notRunnable++;
               self.notRunnable++;
             }
-            if(!self.stopped){
-              self.emit('testcase',null,tc,trtc);
-            }
+            self.emit('testcase',null,tc,trtc);
           }
           trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
           self.sendToServer(self.instanceURL,trtc);
-          cb0();
+          if(!self.stopped){ cb0(); }
         };
         var handleAPIResponse = function(result, err, notRunnable){
           var isPassed = false, remarks = '', isExecuted = false;
