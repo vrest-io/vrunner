@@ -834,6 +834,7 @@ function vRunner(opts){
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
     self.stopped = true;
+    self.kill();
     runner.ABORT();
   });
 };
@@ -957,12 +958,12 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   });
 };
 
-vRunner.prototype.kill = function(next){
+vRunner.prototype.kill = function(){
   var self = this;
   self.sendToServer(self.instanceURL,'OVER');
   var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
   self.sendToServer(self.instanceURL,ne);
-  self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
+  self.saveReport(null,self.instanceURL + '/g/testrun/'+self.testRunId, {
     total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
     failed : self.noFailed, notExecuted : ne + self.noNotExecuted
   }, function(err){
