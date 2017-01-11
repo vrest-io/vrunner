@@ -24,6 +24,7 @@ var request = require('request').defaults({jar: true, json: true}),
     V_BASE_URL = 'https://vrest.io/',
     publicConfiguration = {},
     RUNNER_LIMIT = 5000,
+    WAIT_BEFORE_KILL = false,
     LOOP_LIMIT = 100,
     EMAIL_REGEX = /^\S+@\S+\.\S+$/,
     ORG_URL_PREFIX = 'i/',
@@ -958,21 +959,17 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
 
 vRunner.prototype.kill = function(next){
   var self = this;
-  self.sendToServer(self.instanceURL,'OVER',function(err){
+  self.sendToServer(self.instanceURL,'OVER');
+  var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
+  self.sendToServer(self.instanceURL,ne);
+  self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
+    total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
+    failed : self.noFailed, notExecuted : ne + self.noNotExecuted
+  }, function(err){
     if(err) self.emit('warning',err);
-    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
-    self.sendToServer(self.instanceURL,ne,function(err){
-      if(err) self.emit('warning',err);
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
-        total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
-        failed : self.noFailed, notExecuted : ne + self.noNotExecuted
-      }, function(err){
-        if(err) self.emit('warning',err);
-        self.emit('log',"\nTest Run Stopped.");
-        process.exit(1);
-      }, true);
-    });
-  });
+    self.emit('log',"\nTest Run Stopped.");
+    process.exit(1);
+  }, true);
 };
 
 vRunner.prototype.sigIn = function(next){
@@ -983,7 +980,7 @@ vRunner.prototype.sigIn = function(next){
   });
 };
 
-vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
+vRunner.prototype.sendToServer = function(instanceURL,trtc){
   var self = this;
   var sendNow = function(count){
     var toSend = {};
@@ -996,27 +993,21 @@ vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
       toSend.list = self.pendingTrtc;
     }
     self.pendingTrtc = [];
-    request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
+    var lastOp = function(err,res,body){
       if(err || !body || body.error) {
         self.emit('warning',
           util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
       }
-    });
-    return next(null);
+    };
+    request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, lastOp);
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
-    else next(null);
-  } else if(typeof trtc === 'number' && trtc){
-    if(this.stopped){
-      sendNow(trtc);
-    } else {
-      next(null);
-    }
+  } else if(typeof trtc === 'number' && trtc && this.stopped){
+    sendNow(trtc);
   } else if(typeof trtc === 'object' && trtc) {
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
-    else next(null);
   }
 };
 
@@ -1178,17 +1169,13 @@ vRunner.prototype.run = function(next){
               report.notRunnable++;
               self.notRunnable++;
             }
-            self.emit('testcase',null,tc,trtc);
+            if(!self.stopped){
+              self.emit('testcase',null,tc,trtc);
+            }
           }
           trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
-          self.sendToServer(self.instanceURL,trtc,function(err){
-            if(err) {
-              //console.log('Error occurred while saving execution results : ', err);
-              self.emit('warning',err);
-            } else if(self.stopped){
-              self.kill();
-            } else cb0();
-          });
+          self.sendToServer(self.instanceURL,trtc);
+          cb0();
         };
         var handleAPIResponse = function(result, err, notRunnable){
           var isPassed = false, remarks = '', isExecuted = false;
@@ -1253,14 +1240,9 @@ vRunner.prototype.run = function(next){
   util.series(tasks,function(err, data){
     if(err) self.emit('error',err);
     if(data === 'VRUN_OVER') return;
-    self.sendToServer(self.instanceURL,'OVER',function(err){
-      if(err) {
-        self.emit('warning',err);
-        //console.log('Error occurred while saving execution results : ', err);
-      }
-      self.emit('log', 'Saving test run execution report ...');
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
-    });
+    self.sendToServer(self.instanceURL,'OVER');
+    self.emit('log', 'Saving test run execution report ...');
+    self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
   });
 };
 
