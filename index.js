@@ -390,12 +390,15 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   } else if(pages[page] === false) {
     pages[page] = true;
     request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || !body || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
+      if(err || !body || body.error) {
         pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+      } else if(!(Array.isArray(body.output)) || !(body.output.length)) {
+        vrunner.emit('warning','No test case found at page '+page+'. Test run is completed.');
+        next();
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      } else if(Array.isArray(body.output)){
+      } else {
         var ln = body.output.length;
         for(var n =0;n<ln;n++){
           body.output[n].position = TotalRecords + n;
@@ -417,8 +420,6 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
         }
         pages[page] = ln + (typeof pages[page-1] === 'number' ? pages[page-1] : 0);
         vrunner.emit('new_page', page);
-      } else {
-        next('Test cases not found.');
       }
     });
   } else {
