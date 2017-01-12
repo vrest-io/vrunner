@@ -1024,6 +1024,10 @@ vRunner.prototype.run = function(next){
         if(err) cb(err);
         else {
           self.stopUponFirstFailureInTestRun = Boolean(proju.action && proju.action.stopUponFirstFailureInTestRun);
+          if(!self.timeout){
+            self.timeout = Math.floor(proju.action && proju.action.respTimeout);
+            if(isNaN(self.timeout) || !self.timeout || self.timeout > RUNNER_LIMIT){ delete self.timeout; }
+          }
           if(projectKey) self.projectKey = projectKey;
           findHelpers = findHelpers.bind(undefined,prefetch || {});
           cb();
