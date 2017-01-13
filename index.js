@@ -73,7 +73,6 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
-    VARS.$tc = {};
 
     var TotalRecords = 0;
 
@@ -553,9 +552,18 @@ var forOneTc = function(report,tc,cb0){
         self.stopped = true;
       }
     } else {
-      VARS.$tc.results = util.getModelVal(trtc, 'result');
-      VARS.$tc.isExecuted = util.getModelVal(trtc,'isExecuted');
-      VARS.$tc.isPassed = util.getModelVal(trtc,'isPassed');
+      VARS.$tc.execution = {
+        request : trtc.runnerCase || {},
+        response : { headers : response.headers, body : response.body },
+        testrun : { id : this.testRunId, name : this.testRunName }
+      };
+      VARS.$tc.result = {
+        isExecuted : trtc.isExecuted,
+        isPassed : trtc.isPassed,
+        isRunnable : trtc.isExecuted || Boolean(notRunnable),
+        resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
+          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
+      };
     }
     over();
   };
@@ -570,11 +578,22 @@ var forOneTc = function(report,tc,cb0){
     if(tc.shouldRun()){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
-        var tcToExecute = tc.getTcToExecute();
         if(!(tc.canHook)){
-          VARS.$tc = tcToExecute;
-          VARS.$tc.expectedResults = tc.getTc('expectedResults',true);
+          VARS.$tc.details = {
+            id : tc.id,
+            summary : tc.getTc('summary')
+          };
+          VARS.$tc.testcase = {
+            url : tc.getTc('url'),
+            method : tc.getTc('method'),
+            params : tc.getTc('params'),
+            headers : tc.getTc('headers'),
+          };
+          if(VARS.$tc.testcase.method !== 'GET'){
+            VARS.$tc.testcase.rawBody = tc.getTc('raw').content;
+          }
         }
+        var tcToExecute = tc.getTcToExecute();
         fireRequest(tcToExecute,trtc, self.timeout, function(result){
           handleAPIResponse(result.response, result.err);
         });
@@ -900,8 +919,7 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
   var actualResults = runnerModel.result,
-    toSendTC = _.extend(tc.lastSend, { expectedResults :
-      ((VARS.$tc.expectedResults) || tc.getTc('expectedResults',true)) }),
+    toSendTC = _.extend(tc.lastSend, { expectedResults : (tc.getTc('expectedResults',true)) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
@@ -1212,7 +1230,15 @@ vRunner.prototype.afterComplete = function(report){
   } else if(this.stopped === true) {
     rmk = 'Execution stopped by user.';
   }
-  VARS.$tc = { stats : report, stopped : this.stopped, remarks : rmk };
+  VARS.$tr.results = {
+    totalCount : report.total,
+    failedCount : report.failed,
+    passedCount : report.passed,
+    notExecutedCount : report.notExecuted,
+    notRunnableCount : report.notRunnable,
+    remarks : rmk,
+    resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
+  };
   callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
 };
 
