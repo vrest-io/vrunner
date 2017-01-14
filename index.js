@@ -1230,7 +1230,7 @@ vRunner.prototype.afterComplete = function(report){
   } else if(this.stopped === true) {
     rmk = 'Execution stopped by user.';
   }
-  VARS.$tr.results = {
+  VARS.$tr.result = {
     totalCount : report.total,
     failedCount : report.failed,
     passedCount : report.passed,
