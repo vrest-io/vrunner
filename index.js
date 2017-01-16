@@ -555,7 +555,7 @@ var forOneTc = function(report,tc,cb0){
       VARS.$tc.execution = {
         request : trtc.runnerCase || {},
         response : { headers : response.headers, body : response.body },
-        testrun : { id : this.testRunId, name : this.testRunName }
+        statusCode : response.statusCode
       };
       VARS.$tc.result = {
         isExecuted : trtc.isExecuted,
@@ -1236,7 +1236,7 @@ vRunner.prototype.afterComplete = function(report){
     passedCount : report.passed,
     notExecutedCount : report.notExecuted,
     notRunnableCount : report.notRunnable,
-    remarks : rmk,
+    remarks : rmk || '',
     resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
   };
   callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
