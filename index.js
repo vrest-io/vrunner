@@ -693,6 +693,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PSTR_HOOK_RUNNER.currTcIndex = -1;
     callOneQ(PRTR_HOOK_RUNNER,PRTR_HOOK_COL,function(){
       fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
     });
@@ -1239,6 +1240,7 @@ vRunner.prototype.afterComplete = function(report){
     remarks : rmk || '',
     resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
   };
+  PSTR_HOOK_RUNNER.currTcIndex = -2;
   callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
 };
 
