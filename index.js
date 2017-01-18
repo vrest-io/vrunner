@@ -579,18 +579,13 @@ var forOneTc = function(report,tc,cb0){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
         if(!(tc.canHook)){
-          VARS.$tc.details = {
-            id : tc.id,
-            summary : tc.getTc('summary')
+          VARS.$tc.details = { id : tc.id, summary : tc.getTc('summary') };
+          VARS.$tc.request = {
+            url : tc.getTc('url'), method : tc.getTc('method'),
+            params : tc.getTc('params'), headers : tc.getTc('headers')
           };
-          VARS.$tc.testcase = {
-            url : tc.getTc('url'),
-            method : tc.getTc('method'),
-            params : tc.getTc('params'),
-            headers : tc.getTc('headers'),
-          };
-          if(VARS.$tc.testcase.method !== 'GET'){
-            VARS.$tc.testcase.rawBody = tc.getTc('raw').content;
+          if(VARS.$tc.request.method !== 'GET'){
+            VARS.$tc.request.rawBody = tc.getTc('raw').content;
           }
         }
         var tcToExecute = tc.getTcToExecute();
