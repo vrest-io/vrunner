@@ -516,21 +516,22 @@ var forOneTc = function(report,tc,cb0){
   };
   var handleAPIResponse = function(result, err, notRunnable){
     var isPassed = false, remarks = '', isExecuted = false;
+    var wt = (tc.canHook ? 'Case': 'Hook');
     if(self.stopped === true && !result) {
       remarks = 'Test run was stopped by user.';
     } else {
       if(notRunnable) {
         if(typeof notRunnable === 'string'){
           trtc.result.content = notRunnable;
-          remarks = 'Test case condition was failed, so was not runnable.';
+          remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
         } else {
-          remarks = 'Test case was not runnable.';
+          remarks = 'Test '+ wt +' was not runnable.';
         }
       } else if(err) {
         remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
         setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
       } else if(result === undefined || result === null) {
-        remarks = 'An unknown error occurred while receiving response for the Test case.';
+        remarks = 'An unknown error occurred while receiving response for the Test '+ wt +'.';
         setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
       } else {
         isExecuted = true;
