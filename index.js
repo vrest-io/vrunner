@@ -528,7 +528,7 @@ var forOneTc = function(report,tc,cb0){
           remarks = 'Test '+ wt +' was not runnable.';
         }
       } else if(err) {
-        remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
+        remarks = 'An error has occurred while executing this test '+ wt +'. Error logged : ' + JSON.stringify(err);
         setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
       } else if(result === undefined || result === null) {
         remarks = 'An unknown error occurred while receiving response for the Test '+ wt +'.';
