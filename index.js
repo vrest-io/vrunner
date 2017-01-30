@@ -350,6 +350,8 @@ RunnerModel.prototype = {
 
   resetProps : function(){
     delete this.currentCondition;
+    delete this.exStatusAll;
+    delete this.exStatusLoop;
   },
 
   getTcToExecute : function(){
