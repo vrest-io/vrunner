@@ -348,6 +348,10 @@ RunnerModel.prototype = {
     }
   },
 
+  resetProps : function(){
+    delete this.currentCondition;
+  },
+
   getTcToExecute : function(){
     var ret = {
       method: this.getTc('method'),
@@ -471,6 +475,7 @@ var oneTimeCache = function(vrunner,records,total){
 
 var forOneTc = function(report,tc,cb0){
   var self = this;
+  tc.resetProps();
   tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
   tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
   var trtc = {
@@ -694,6 +699,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PSTR_HOOK_RUNNER.currTcIndex = -1;
     VARS.$tr.details = {
+      id : vrunner.testRunId,
       name : vrunner.testRunName,
       executor : { name : vrunner.userFullName, email : vrunner.credentials.email }
     };
