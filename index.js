@@ -34,6 +34,11 @@ var request = require('request').defaults({jar: true, json: true}),
     pages = [false],
     MAIN_AUTHORIZATIONS = {},
     MAIN_COLLECTION = [],
+    PRE_HOOK_COL = [],
+    POST_HOOK_COL = [],
+    NO_OF_EXECUTED = 0,
+    PRTR_HOOK_COL = [],
+    PSTR_HOOK_COL = [],
     _ = {
       extend : function(target) {
         if (target == null) { target = {}; }
@@ -291,6 +296,7 @@ function RunnerModel(ob){
       self[ky] = ob[ky];
     }
   });
+  this.canHook = true;
 };
 
 RunnerModel.prototype = {
@@ -390,12 +396,15 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
   } else if(pages[page] === false) {
     pages[page] = true;
     request(url + '&pageSize=' + pageSize + '&currentPage=' + page, function(err, res, body){
-      if(err || !body || body.error || !(Array.isArray(body.output)) || !(body.output.length)) {
+      if(err || !body || body.error) {
         pages[page] = util.stringify(['Error found while fetching test cases at page '+page+' :', body]);
         fetchSinglePage(url, page, pageSize, cb, next, vrunner);
+      } else if(!(Array.isArray(body.output)) || !(body.output.length)) {
+        vrunner.emit('warning','No test case found at page '+page+'. Test run is completed.');
+        next();
       } else if(!util.isNumber(body.total) || body.total > RUNNER_LIMIT){
         pages[page] = 'More than '+RUNNER_LIMIT+ ' test cases can not be executed in one go.';
-      } else if(Array.isArray(body.output)){
+      } else {
         var ln = body.output.length;
         for(var n =0;n<ln;n++){
           body.output[n].position = TotalRecords + n;
@@ -417,8 +426,6 @@ var fetchSinglePage = function(url, page, pageSize, cb, next, vrunner){
         }
         pages[page] = ln + (typeof pages[page-1] === 'number' ? pages[page-1] : 0);
         vrunner.emit('new_page', page);
-      } else {
-        next('Test cases not found.');
       }
     });
   } else {
@@ -439,9 +446,15 @@ var afterFetch = function(st, en, cb, next, vrunner){
   var forEachTc = function(index){
     if(index < en && index < vrunner.totalRecords){
       vrunner.setupLoopAlgo(index,true);
-      cb(MAIN_COLLECTION[index], function(){
-        var nIndex = vrunner.setupLoopAlgo(index);
-        forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
+      PRE_HOOK_RUNNER.currTcIndex = NO_OF_EXECUTED;
+      callOneQ(PRE_HOOK_RUNNER,PRE_HOOK_COL,function(){
+        cb(MAIN_COLLECTION[index], function(){
+          POST_HOOK_RUNNER.currTcIndex = NO_OF_EXECUTED - 1;
+          callOneQ(POST_HOOK_RUNNER,POST_HOOK_COL,function(){
+            var nIndex = vrunner.setupLoopAlgo(index);
+            forEachTc(typeof nIndex === 'number' ? nIndex : (index+1));
+          });
+        });
       });
     } else {
       next();
@@ -456,8 +469,231 @@ var oneTimeCache = function(vrunner,records,total){
   pages[0] = records;
 };
 
+var forOneTc = function(report,tc,cb0){
+  var self = this;
+  tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
+  tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
+  var trtc = {
+    result: {
+      headers : [],
+      statusCode : 0,
+      content: '',
+      resultType: 'text'
+    },
+    isExecuted: false,
+    testRunId : self.testRunId,
+    loopIndex : typeof self.loopIndex === 'number' ? self.loopIndex : VARS.$,
+    tcIndex : typeof self.currTcIndex === 'number' ? self.currTcIndex : NO_OF_EXECUTED,
+    testCaseId : tc.id,
+    executionTime: 0
+  };
+  var over = function(){
+    report.total++;
+    if(tc.canHook){ NO_OF_EXECUTED++; }
+    if(trtc.isExecuted){
+      if(trtc.isPassed) {
+        report.passed++;
+        self.noPassed++;
+        self.emit('testcase',true,tc,trtc);
+      } else {
+        report.failed++;
+        self.noFailed++;
+        self.emit('testcase',false,tc,trtc);
+      }
+    } else {
+      if(tc.runnable){
+        report.notExecuted++;
+        self.noNotExecuted++;
+      } else {
+        report.notRunnable++;
+        self.notRunnable++;
+      }
+      self.emit('testcase',null,tc,trtc);
+    }
+    trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
+    self.sendToServer(trtc);
+    if(!self.stopped){ cb0(); }
+  };
+  var handleAPIResponse = function(result, err, notRunnable){
+    var isPassed = false, remarks = '', isExecuted = false;
+    var wt = (tc.canHook ? 'Case': 'Hook');
+    if(self.stopped === true && !result) {
+      remarks = 'Test run was stopped by user.';
+    } else {
+      if(notRunnable) {
+        if(typeof notRunnable === 'string'){
+          trtc.result.content = notRunnable;
+          remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
+        } else {
+          remarks = 'Test '+ wt +' was not runnable.';
+        }
+      } else if(err) {
+        remarks = 'An error has occurred while executing this test '+ wt +'. Error logged : ' + JSON.stringify(err);
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+      } else if(result === undefined || result === null) {
+        remarks = 'An unknown error occurred while receiving response for the Test '+ wt +'.';
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+      } else {
+        isExecuted = true;
+        var actualResults = getActualResults(result);
+        trtc.result = actualResults;
+        extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
+        isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
+      }
+      isPassed = isPassed === true;
+      trtc.isExecuted = isExecuted;
+      trtc.isPassed = isPassed;
+    }
+    if(!trtc.remarks) trtc.remarks = remarks;
+    if(tc.canHook){
+      if(report.total >= (RUNNER_LIMIT - 1)){
+        self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
+      } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
+        self.stopped = true;
+      }
+    } else {
+      VARS.$tc.execution = {
+        request : trtc.runnerCase || {},
+        response : { headers : response.headers, body : response.body },
+        statusCode : response.statusCode
+      };
+      VARS.$tc.result = {
+        isExecuted : trtc.isExecuted,
+        isPassed : trtc.isPassed,
+        isRunnable : trtc.isExecuted || Boolean(notRunnable),
+        resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
+          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
+      };
+    }
+    over();
+  };
+  var forNotRunnable = function(cond){
+    setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
+    handleAPIResponse(null, null, cond || true);
+  };
+  if(self.stopped || tc.getTc('runnable') === false){
+    forNotRunnable();
+  } else {
+    processUtil.extractPathVars(tc.params);
+    if(tc.shouldRun()){
+      trtc.executionTime = new Date().getTime();
+      var afterWait = function(){
+        if(!(tc.canHook)){
+          VARS.$tc.details = { id : tc.id, summary : tc.getTc('summary') };
+          VARS.$tc.request = {
+            url : tc.getTc('url'), method : tc.getTc('method'),
+            params : tc.getTc('params'), headers : tc.getTc('headers')
+          };
+          if(VARS.$tc.request.method !== 'GET'){
+            VARS.$tc.request.rawBody = tc.getTc('raw').content;
+          }
+        }
+        var tcToExecute = tc.getTcToExecute();
+        fireRequest(tcToExecute,trtc, self.timeout, function(result){
+          handleAPIResponse(result.response, result.err);
+        });
+      };
+      var wf = tc.getTc('waitFor');
+      if(wf) setTimeout(afterWait, wf*1000);
+      else afterWait();
+    } else {
+      forNotRunnable(tc.currentCondition);
+    }
+  }
+};
+
+function HookRunner(trId,instanceURL,validatorIdCodeMap,timeout){
+  this.testRunId = trId;
+  this.noPassed = 0; this.noFailed = 0; this.noNotExecuted = 0; this.notRunnable = 0;
+  this.report = { noPassed : this.noPassed, noFailed : this.noFailed,
+    noNotExecuted : this.noNotExecuted, notRunnable : this.notRunnable };
+  this.pendingTrtc = [];
+  this.filters = {};
+  this.stopped = false;
+  this.instanceURL = instanceURL;
+  this.stopUponFirstFailureInTestRun = false;
+  this.validatorIdCodeMap = validatorIdCodeMap;
+  this.loopIndex = 0;
+  this.currTcIndex = 0;
+  this.timeout = timeout;
+  this.pushResultName = 'testruntesthook';
+};
+
+HookRunner.prototype.emit = function(){};
+
+HookRunner.prototype.forOneTc = forOneTc;
+
+HookRunner.prototype.sendToServer = function(trtc){
+  var self = this;
+  var sendNow = function(count){
+    var toSend = {};
+    if(count){
+      toSend.count = count;
+      toSend.testRunId = self.testRunId;
+      toSend.loopIndex = VARS.$;
+      toSend.filterData = self.filters;
+    } else {
+      toSend.list = self.pendingTrtc;
+    }
+    self.pendingTrtc = [];
+    var lastOp = function(err,res,body){
+      if(err || !body || body.error) {
+        self.emit('warning',
+          util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+      }
+    };
+    request({ method: 'POST', uri: self.instanceURL+'/bulk/'+(self.pushResultName || 'testruntestcase'), body: toSend }, lastOp);
+  };
+  if(trtc === 'OVER'){
+    if(this.pendingTrtc.length) sendNow();
+  } else if(typeof trtc === 'number' && trtc && this.stopped){
+    sendNow(trtc);
+  } else if(typeof trtc === 'object' && trtc) {
+    this.pendingTrtc.push(trtc);
+    if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
+  }
+};
+
+var PRE_HOOK_RUNNER, POST_HOOK_RUNNER, PRTR_HOOK_RUNNER, PSTR_HOOK_RUNNER;
+
+var callOneQ = function(withRunner,qu,after,ind){
+  if(!ind) ind = 0;
+  if(!(Array.isArray(qu)) || ind === qu.length || !(qu[ind])) {
+    withRunner.sendToServer('OVER');
+    return after();
+  }
+  withRunner.forOneTc(withRunner.report,qu[ind],function(){
+    withRunner.loopIndex++;
+    callOneQ(withRunner,qu,after,ind+1);
+  });
+};
+
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
-  fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
+  request(vrunner.instanceURL+'/g/testhook?currentPage=0&pageSize=100&projectId='+vrunner.projectId, function(err,bod,res){
+    if(err || !res || res.error) return next(['Error while fetching hooks :', err||res], 'VRUN_OVER');
+    res.output.forEach(function(abs){
+      var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
+      abs.canHook = false;
+      if(abs.flowIndex === 0){
+        PRTR_HOOK_COL.push(abs);
+      } else if(abs.flowIndex === 1){
+        PRE_HOOK_COL.push(abs);
+      } else if(abs.flowIndex === 2){
+        POST_HOOK_COL.push(abs);
+      } else if(abs.flowIndex === 3){
+        PSTR_HOOK_COL.push(abs);
+      }
+    });
+    PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PSTR_HOOK_RUNNER.currTcIndex = -1;
+    callOneQ(PRTR_HOOK_RUNNER,PRTR_HOOK_COL,function(){
+      fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
+    });
+  });
 };
 
 var hasRunPermission = function(instance, project, next){
@@ -523,8 +759,10 @@ var getAuthHeader = function(ath){
   }
 };
 
-var fireRequest = function(tc, trtc, callback){
-  runner({ testcase : tc },function(result){
+var fireRequest = function(tc, trtc, timeout, callback){
+  var toSend = { testcase : tc }, timeout = Math.floor(timeout);
+  if(!(isNaN(timeout))){ toSend.timeout = timeout*1000; }
+  runner(toSend,function(result){
     var afterWait = function(){
       if(!result || result.err) {
         //console.log(result);
@@ -678,7 +916,7 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
 var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ //tc added
   if(applyToValidator.length) return;
   var actualResults = runnerModel.result,
-    toSendTC = _.extend(tc.lastSend, { expectedResults : tc.getTc('expectedResults',true) }),
+    toSendTC = _.extend(tc.lastSend, { expectedResults : (tc.getTc('expectedResults',true)) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
@@ -831,12 +1069,14 @@ function vRunner(opts){
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
     self.stopped = true;
+    self.kill();
+    runner.ABORT();
   });
 };
 
 var setupLoopAlgo = function(runModelIndex, noUpdate){
   var runModel = MAIN_COLLECTION[runModelIndex];
-  if(runModel){
+  if(runModel && runModel.canHook === true){
     var tsId = runModel.testSuiteId;
     var lp = LOOPS.filter(function(lp){ return lp.endTCId === runModel.id && lp.testSuiteId === tsId; })[0];
     if(lp){
@@ -932,6 +1172,8 @@ vRunner.prototype.initAll = function(total){
   }
 };
 
+vRunner.prototype.forOneTc = forOneTc;
+
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
   if(!stopped) stopped = this.stopped;
@@ -953,23 +1195,19 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   });
 };
 
-vRunner.prototype.kill = function(next){
+vRunner.prototype.kill = function(){
   var self = this;
-  self.sendToServer(self.instanceURL,'OVER',function(err){
+  self.sendToServer('OVER');
+  var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
+  self.sendToServer(ne);
+  self.saveReport(null,self.instanceURL + '/g/testrun/'+self.testRunId, {
+    total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
+    failed : self.noFailed, notExecuted : ne + self.noNotExecuted
+  }, function(err){
     if(err) self.emit('warning',err);
-    var ne = (self.totalRecords-self.noPassed-self.noFailed-self.noNotExecuted-self.notRunnable);
-    self.sendToServer(self.instanceURL,ne,function(err){
-      if(err) self.emit('warning',err);
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId, {
-        total : self.totalRecords, passed : self.noPassed, notRunnable : self.notRunnable,
-        failed : self.noFailed, notExecuted : ne + self.noNotExecuted
-      }, function(err){
-        if(err) self.emit('warning',err);
-        self.emit('log',"\nTest Run Stopped.");
-        process.exit(1);
-      }, true);
-    });
-  });
+    self.emit('log',"\nTest Run Stopped.");
+    process.exit(1);
+  }, true);
 };
 
 vRunner.prototype.sigIn = function(next){
@@ -980,36 +1218,26 @@ vRunner.prototype.sigIn = function(next){
   });
 };
 
-vRunner.prototype.sendToServer = function(instanceURL,trtc,next){
-  var self = this;
-  var sendNow = function(count){
-    var toSend = {};
-    if(count){
-      toSend.count = count;
-      toSend.testRunId = self.testRunId;
-      toSend.loopIndex = VARS.$;
-      toSend.filterData = self.filters;
-    } else {
-      toSend.list = self.pendingTrtc;
-    }
-    self.pendingTrtc = [];
-    request({ method: 'POST', uri: instanceURL+'/bulk/testruntestcase', body: toSend }, function(err,res,body){
-      if(err || !body || body.error) {
-        self.emit('warning',util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
-      }
-    });
-    return next(null);
-  };
-  if(trtc === 'OVER'){
-    if(this.pendingTrtc.length) sendNow();
-    else next(null);
-  } else if(this.stopped){
-    sendNow();
-  } else {
-    this.pendingTrtc.push(trtc);
-    if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
-    else next(null);
+vRunner.prototype.sendToServer = HookRunner.prototype.sendToServer;
+
+vRunner.prototype.afterComplete = function(report){
+  var rmk = false;
+  if((typeof this.stopped === 'string' && this.stopped)) {
+    rmk = this.stopped;
+  } else if(this.stopped === true) {
+    rmk = 'Execution stopped by user.';
   }
+  VARS.$tr.result = {
+    totalCount : report.total,
+    failedCount : report.failed,
+    passedCount : report.passed,
+    notExecutedCount : report.notExecuted,
+    notRunnableCount : report.notRunnable,
+    remarks : rmk || '',
+    resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
+  };
+  PSTR_HOOK_RUNNER.currTcIndex = -2;
+  callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
 };
 
 vRunner.prototype.run = function(next){
@@ -1024,6 +1252,10 @@ vRunner.prototype.run = function(next){
         if(err) cb(err);
         else {
           self.stopUponFirstFailureInTestRun = Boolean(proju.action && proju.action.stopUponFirstFailureInTestRun);
+          if(!self.timeout){
+            var to = Math.floor(proju.action && proju.action.respTimeout);
+            if(!(isNaN(to)) && to && to < RUNNER_LIMIT){ self.timeout = to; }
+          }
           if(projectKey) self.projectKey = projectKey;
           findHelpers = findHelpers.bind(undefined,prefetch || {});
           cb();
@@ -1134,125 +1366,16 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      fetchAndServe(self.url, self.pageSize, function(tc,cb0){
-        tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
-        tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
-        var trtc = {
-          result: {
-            headers : [],
-            statusCode : 0,
-            content: '',
-            resultType: 'text'
-          },
-          isExecuted: false,
-          testRunId : self.testRunId,
-          loopIndex : VARS.$,
-          testCaseId : tc.id,
-          executionTime: 0
-        };
-        var over = function(){
-          report.total++;
-          if(trtc.isExecuted){
-            if(trtc.isPassed) {
-              report.passed++;
-              self.noPassed++;
-              self.emit('testcase',true,tc,trtc);
-            } else {
-              report.failed++;
-              self.noFailed++;
-              self.emit('testcase',false,tc,trtc);
-            }
-          } else {
-            if(tc.runnable){
-              report.notExecuted++;
-              self.noNotExecuted++;
-            } else {
-              report.notRunnable++;
-              self.notRunnable++;
-            }
-            self.emit('testcase',null,tc,trtc);
-          }
-          trtc.remarks = util.cropString(trtc.remarks, RUNNER_LIMIT);
-          self.sendToServer(self.instanceURL,trtc,function(err){
-            if(err) {
-              //console.log('Error occurred while saving execution results : ', err);
-              self.emit('warning',err);
-            } else if(self.stopped){
-              self.kill();
-            } else cb0();
-          });
-        };
-        var handleAPIResponse = function(result, err, notRunnable){
-          var isPassed = false, remarks = '', isExecuted = false;
-          if(!result) {
-            remarks = self.stopped ? 'Test run was stopped by user.' : 'No response available.';
-          } else if(notRunnable) {
-            if(typeof notRunnable === 'string'){
-              trtc.result.content = notRunnable;
-              remarks = 'Test case condition was failed, so was not runnable.';
-            } else {
-              remarks = 'Test case was not runnable.';
-            }
-          } else if(result === undefined || result === null) {
-            remarks = 'An unknown error occurred while receiving response for the Test case.';
-          } else if(err) {
-            remarks = 'An error has occurred while executing this test case. Error logged : ' + JSON.stringify(err);
-            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
-          } else {
-            isExecuted = true;
-            var actualResults = getActualResults(result);
-            trtc.result = actualResults;
-            extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
-            isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-            setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
-          }
-          isPassed = isPassed === true;
-          if(report.total >= (RUNNER_LIMIT - 1)){
-            self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
-          } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
-            self.stopped = true;
-          }
-          if(!trtc.remarks) trtc.remarks = remarks;
-          trtc.isExecuted = isExecuted;
-          trtc.isPassed = isPassed;
-          over();
-        };
-        var forNotRunnable = function(cond){
-          setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,-1);
-          handleAPIResponse(null, null, cond || true);
-        };
-        if(self.stopped || tc.getTc('runnable') === false){
-          forNotRunnable();
-        } else {
-          processUtil.extractPathVars(tc.params);
-          if(tc.shouldRun()){
-            trtc.executionTime = new Date().getTime();
-            var afterWait = function(){
-              fireRequest(tc.getTcToExecute(),trtc,function(result){
-                handleAPIResponse(result.response, result.err);
-              });
-            };
-            var wf = tc.getTc('waitFor');
-            if(wf) setTimeout(afterWait, wf*1000);
-            else afterWait();
-          } else {
-            forNotRunnable(tc.currentCondition);
-          }
-        }
-      },cb, self);
+      fetchAndServe(self.url, self.pageSize, self.forOneTc.bind(self,report), cb, self);
     }
   ];
   util.series(tasks,function(err, data){
+    self.afterComplete(report);
     if(err) self.emit('error',err);
     if(data === 'VRUN_OVER') return;
-    self.sendToServer(self.instanceURL,'OVER',function(err){
-      if(err) {
-        self.emit('warning',err);
-        //console.log('Error occurred while saving execution results : ', err);
-      }
-      self.emit('log', 'Saving test run execution report ...');
-      self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
-    });
+    self.sendToServer('OVER');
+    self.emit('log', 'Saving test run execution report ...');
+    self.saveReport(err,self.instanceURL + '/g/testrun/'+self.testRunId,report,next);
   });
 };
 
