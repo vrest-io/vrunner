@@ -573,7 +573,7 @@ var forOneTc = function(report,tc,cb0){
         isPassed : trtc.isPassed,
         isRunnable : trtc.isExecuted || Boolean(notRunnable),
         resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
-          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
+          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
       };
     }
     over();
