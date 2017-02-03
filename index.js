@@ -348,6 +348,12 @@ RunnerModel.prototype = {
     }
   },
 
+  resetProps : function(){
+    delete this.currentCondition;
+    delete this.exStatusAll;
+    delete this.exStatusLoop;
+  },
+
   getTcToExecute : function(){
     var ret = {
       method: this.getTc('method'),
@@ -471,6 +477,7 @@ var oneTimeCache = function(vrunner,records,total){
 
 var forOneTc = function(report,tc,cb0){
   var self = this;
+  tc.resetProps();
   tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
   tc.exStatusLoop = findTcVarsName(tc,'loop') || false;
   var trtc = {
@@ -556,14 +563,17 @@ var forOneTc = function(report,tc,cb0){
       VARS.$tc.execution = {
         request : trtc.runnerCase || {},
         response : { headers : response.headers, body : response.body },
-        statusCode : response.statusCode
+        statusCode : response.statusCode || 0
       };
+      try {
+        VARS.$tc.execution.request.headers = JSON.parse(VARS.$tc.execution.request.headers)
+      } catch(erm){ }
       VARS.$tc.result = {
         isExecuted : trtc.isExecuted,
         isPassed : trtc.isPassed,
         isRunnable : trtc.isExecuted || Boolean(notRunnable),
         resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
-          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
+          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
       };
     }
     over();
@@ -690,6 +700,11 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PSTR_HOOK_RUNNER.currTcIndex = -1;
+    VARS.$tr.details = {
+      id : vrunner.testRunId,
+      name : vrunner.testRunName,
+      executor : { name : vrunner.userFullName, email : vrunner.credentials.email }
+    };
     callOneQ(PRTR_HOOK_RUNNER,PRTR_HOOK_COL,function(){
       fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
     });
@@ -702,7 +717,7 @@ var hasRunPermission = function(instance, project, next){
     if(err || !body || body.error) next(['Error while checking execute permission  :', err||body], 'VRUN_OVER');
     else if(!body.output) next('Internal permission error.', 'VRUN_OVER');
     else if(body.output.permit !== true) next('NO_PERMISSION_TO_RUN_TESTCASE_IN_PROJECT', 'VRUN_OVER');
-    else next(null,body.output.project, body.output.prefetch, body.output.projectuser);
+    else next(null,body.output.project, body.output.prefetch, body.output.projectuser, body.output.user);
   });
 };
 
@@ -1240,6 +1255,12 @@ vRunner.prototype.afterComplete = function(report){
   callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
 };
 
+var getFullName = function(usr){
+  var nm = usr.firstName;
+  if(usr.lastName) nm += (' '+usr.lastName);
+  return nm;
+};
+
 vRunner.prototype.run = function(next){
   var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0 };
   var tasks = [
@@ -1248,9 +1269,10 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch, proju){
+      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch, proju,usr){
         if(err) cb(err);
         else {
+          self.userFullName = getFullName(usr);
           self.stopUponFirstFailureInTestRun = Boolean(proju.action && proju.action.stopUponFirstFailureInTestRun);
           if(!self.timeout){
             var to = Math.floor(proju.action && proju.action.respTimeout);
