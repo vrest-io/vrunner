@@ -141,16 +141,7 @@ var request = require('request').defaults({jar: true, json: true}),
         }
       },
 
-      getJsonOrString: function(str){
-        if(typeof str === 'string'){
-          try {
-            return JSON.parse(str);
-          } catch(err){
-            return str;
-          }
-        }
-        return str;
-      },
+      getJsonOrString: ReplaceModule.getJsonOrString,
 
       getReadableString : function(st,blank){
         if(blank && (st === undefined || st === null)) return '';
@@ -159,37 +150,7 @@ var request = require('request').defaults({jar: true, json: true}),
         return String(st);
       },
 
-      getReplacedStringifiedObject : function(obj,opt){
-        if(typeof opt !== 'object' || !opt){ opt = {}; }
-        if(!opt.spcl){ opt.spcl = config.meta.startVarExpr + '*' + config.meta.endVarExpr; }
-        var spcl = opt.spcl;
-        if(obj){
-          if(!opt.dontParse){ obj = processUtil.getJsonOrString(obj); }
-          if(typeof obj === 'object'){
-            util.walkInto(function(valn, key, root){
-              if(typeof root === 'object' && root && root.hasOwnProperty(key)){
-                var val = root[key], tmpKy = null;
-                if(util.isWithVars(key) && key !== spcl){
-                  tmpKy = processUtil.replacingString(key);
-                  if(tmpKy !== key){
-                    val = root[tmpKy] = root[key];
-                    delete root[key];
-                  }
-                }
-                if(typeof val === 'string' && val && val !== spcl){
-                  if(util.isWithVars(val)){
-                    root[tmpKy || key] = processUtil.replacingString(val);
-                  }
-                }
-              }
-            }, null, obj);
-          }
-        }
-        if(typeof obj !== 'object'){
-          obj = processUtil.replacingString(String(obj));
-        }
-        return (typeof obj !== 'string' && opt.castInString) ? util.stringify(obj) : obj;
-      },
+      getReplacedStringifiedObject : ReplaceModule.getReplacedStringifiedObject,
 
       completeURL: function(url, params) {
         var s = '', i = 0,l, pm;
