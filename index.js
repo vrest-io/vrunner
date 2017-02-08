@@ -1040,7 +1040,7 @@ function vRunner(opts){
   this.url = this.instanceURL + '/g/testcase' + mainUrlUtil.format({ query : queryObject });
   this.pendingTrtc = [];
   this.stopped = false;
-  this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
+  this.totalRecords = 0; this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
   var self = this;
   process.on( 'SIGINT', function() {
     self.emit('log',"\nPlease wait, Stopping test case execution ...");
