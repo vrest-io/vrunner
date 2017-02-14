@@ -87,8 +87,18 @@ var request = require('request').defaults({jar: true, json: true}),
     } else {
       XMLPath = function(XMLNode,path){
         try {
-          return X_PATH.select(path,XMLNode);
+          var headings = X_PATH.evaluate(path,XMLNode,null,X_PATH.XPathResult.ANY_TYPE,null);
         } catch(erm){
+          return NOT_RES;
+        }
+        var thisHeading = (headings && headings.iterateNext()), resp = "";
+        if(thisHeading){
+          while (thisHeading) {
+            resp += thisHeading.textContent + "\n";
+            thisHeading = headings.iterateNext();
+          }
+          return resp;
+        } else {
           return NOT_RES;
         }
       };
@@ -889,7 +899,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
           opts.prefixes[1].headers = headers;
           opts.prefixes[1].statusCode = result.statusCode;
           VARS[vr.name] = ReplaceModule.replace(vr.path,opts);
-        } else if(result.resultType === 'json') {
+        } else {
           VARS[vr.name] = getJSONPathValue(jsonData, vr.path, result.resultType);
         }
       }
