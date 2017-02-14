@@ -1203,6 +1203,7 @@ vRunner.prototype.afterComplete = function(report){
   } else if(this.stopped === true) {
     rmk = 'Execution stopped by user.';
   }
+  if(!VARS.$tr) VARS.$tr = {};
   VARS.$tr.result = {
     totalCount : report.total,
     failedCount : report.failed,
@@ -1212,8 +1213,10 @@ vRunner.prototype.afterComplete = function(report){
     remarks : rmk || '',
     resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
   };
-  PSTR_HOOK_RUNNER.currTcIndex = -2;
-  callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
+  if(PSTR_HOOK_RUNNER){
+    PSTR_HOOK_RUNNER.currTcIndex = -2;
+    callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
+  }
 };
 
 var getFullName = function(usr){
