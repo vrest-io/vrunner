@@ -73,6 +73,69 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
+    var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
+
+    var domParser;
+    if(typeof DOMParser === 'function'){
+      try { domParser = new DOMParser(); } catch(erm){ }
+    }
+    if(domParser === undefined){
+      domParser = { parseFromString : function(){ return false; } }
+      XMLPath = function(){ return NOT_RES; };
+    } else {
+      XMLPath = function(XMLNode,path){
+        try {
+          var headings = document.evaluate(path, XMLNode, null, XPathResult.ANY_TYPE, null);
+        } catch(erm){
+          return NOT_RES;
+        }
+        var thisHeading = (headings && headings.iterateNext()), resp = "";
+        if(thisHeading){
+          while (thisHeading) {
+            resp += thisHeading.textContent + "\n";
+            thisHeading = headings.iterateNext();
+          }
+          return resp;
+        } else {
+          return NOT_RES;
+        }
+      };
+    }
+
+    var getJsonPath = function(path){
+      if(typeof path === 'string' && path.length) {
+        if(path.charAt(0) === '$') return path;
+        return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
+      }
+    }, getJsonOrString = function(vlm,tp){
+      if(typeof vlm === 'string'){
+        if(tp === 'json' || tp !== 'xml'){
+          return processUtil.getJsonOrString(vlm);
+        } else {
+          try { return domParser.parseFromString(vlm,'application/xml'); } catch(em) { }
+        }
+      }
+      return vlm;
+    };
+
+    var getJSONPathValue = function(json, path, wth){
+      var ifNotResolved = ReplaceModule.replace, tm, ret = 'V_PATH_NOT_RESOLVED', tp;
+      if(wth !== 'xml'){
+        tm = JSONPath;
+        path = getJsonPath(vr.path);
+        if(typeof(json) != 'object' || !json) return ret;
+      } else {
+        tm = XMLPath;
+      }
+      ret = tm(json, path);
+
+      if(ret === 'V_PATH_NOT_RESOLVED' && typeof ifNotResolved === 'function') {
+        tp = ifNotResolved(path);
+        if(tp !== path) ret = tm(json, tp);
+      }
+      if(Array.isArray(ret) && ret.length === 1) return ret[0];
+      else return ret;
+    };
 
     var TotalRecords = 0;
 
@@ -816,19 +879,6 @@ var getResultType = function(response) {
   return rType;
 };
 
-var getJSONPathValue = function(path, json){
-  var ret = undefined, tp;
-  if(typeof(json) != 'object') return ret;
-  ret = JSONPath(json, path);
-
-  if(ret === 'V_PATH_NOT_RESOLVED') {
-    tp = processUtil.replacingString(path);
-    if(tp !== path) ret = JSONPath(json, tp);
-  }
-  if(Array.isArray(ret) && ret.length === 1) return ret[0];
-  else return ret;
-};
-
 var getActualResults = function(response) {
   return {
     statusCode : response.statusCode,
@@ -836,12 +886,6 @@ var getActualResults = function(response) {
     content: util.stringify(response.body, null, true),
     resultType: getResultType(response)
   };
-};
-
-var getJsonPath = function(path){
-  if(typeof path === 'string' && path.length) {
-    return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
-  }
 };
 
 var isAssertionForValidator = function(ass){
@@ -884,7 +928,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
 
 var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
-    var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
+    var opts = { prefixes : ['',{}] }, jsonData = getJsonOrString(result.content, result.resultType), tp;
     (tcVariables || []).forEach(function(vr){
       if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
@@ -893,7 +937,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
           opts.prefixes[1].statusCode = result.statusCode;
           VARS[vr.name] = ReplaceModule.replace(vr.path,opts);
         } else if(result.resultType === 'json') {
-          VARS[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
+          VARS[vr.name] = getJSONPathValue(jsonData, vr.path, result.resultType);
         }
       }
     });
@@ -920,7 +964,7 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
       return { ac : actualResults.content, setActual : publicConfiguration.copyFromActual, ex : ass.value };
     case 'jsonBody' :
       return {
-        ac : getJSONPathValue(getJsonPath(ass.property), actualJSONContent), ex : ass.value,
+        ac : getJSONPathValue(actualJSONContent, ass.property, actualResults.resultType), ex : ass.value,
         setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
       };
     case 'default' :
@@ -934,7 +978,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
     toSendTC = _.extend(tc.lastSend, { expectedResults : (tc.getTc('expectedResults',true)) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
-  toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
+  toSendTC.expectedResults.contentSchema = getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
@@ -950,9 +994,12 @@ var setFinalExpContent = function(er,ar){
     if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1),
+        exCont = getJsonOrString(er.content, er.resultType);
       if(typeof exCont === 'object'){
-        if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
+        if(isSpcl) {
+          exCont = util.mergeObjects(exCont, getJsonOrString(ar.content,ar.resultType), { spcl : spcl });
+        }
         er.content = util.stringify(exCont);
       }
     } else {
@@ -1003,7 +1050,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
   var isPassed = true, toValidate = false, headers = {},
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
-  var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
+  var actualJSONContent = getJsonOrString(actualResults.content, actualResults.resultType),
       findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
