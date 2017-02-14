@@ -19,6 +19,8 @@ var request = require('request').defaults({jar: true, json: true}),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
     pathUtil = require('path'),
+    DOMParser = require('xmldom').DOMParser,
+    X_PATH = require('xpath'),
     btoa = require('btoa'),
     mainUrlUtil = require('url'),
     V_BASE_URL = 'https://vrest.io/',
@@ -85,18 +87,8 @@ var request = require('request').defaults({jar: true, json: true}),
     } else {
       XMLPath = function(XMLNode,path){
         try {
-          var headings = document.evaluate(path, XMLNode, null, XPathResult.ANY_TYPE, null);
+          return X_PATH.select(path,XMLNode);
         } catch(erm){
-          return NOT_RES;
-        }
-        var thisHeading = (headings && headings.iterateNext()), resp = "";
-        if(thisHeading){
-          while (thisHeading) {
-            resp += thisHeading.textContent + "\n";
-            thisHeading = headings.iterateNext();
-          }
-          return resp;
-        } else {
           return NOT_RES;
         }
       };
@@ -112,7 +104,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(tp === 'json' || tp !== 'xml'){
           return processUtil.getJsonOrString(vlm);
         } else {
-          try { return domParser.parseFromString(vlm,'application/xml'); } catch(em) { }
+          try { return domParser.parseFromString(vlm); } catch(em) { }
         }
       }
       return vlm;
