@@ -124,7 +124,7 @@ var request = require('request').defaults({jar: true, json: true}),
       var ifNotResolved = ReplaceModule.replace, tm, ret = 'V_PATH_NOT_RESOLVED', tp;
       if(wth !== 'xml'){
         tm = JSONPath;
-        path = getJsonPath(vr.path);
+        path = getJsonPath(path);
         if(typeof(json) != 'object' || !json) return ret;
       } else {
         tm = XMLPath;
