@@ -75,6 +75,56 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
+
+  var XML_EQUAL_SIGN = '{{VREST_$_STAR}}', XML_EQUAL_TO = '{{*}}';
+
+  function isValidXMLStar(vl){
+    return (ReplaceModule.isWithVars(vl) && (vl.trim()) === XML_EQUAL_SIGN);
+  }
+
+  // Changes XML to JSON, https://davidwalsh.name/convert-xml-json
+  function xmlToJson(xml,withStar) {
+
+    // Create the return object
+    var obj = {};
+
+    if (xml.nodeType == 1) { // element
+      // do attributes
+      if (xml.attributes.length > 0) {
+      obj["@attributes"] = {};
+        for (var j = 0; j < xml.attributes.length; j++) {
+          var attribute = xml.attributes.item(j);
+          obj["@attributes"][attribute.nodeName] =
+            (withStar && isValidXMLStar(attribute.nodeValue))? XML_EQUAL_TO : attribute.nodeValue;
+        }
+      }
+    } else if (xml.nodeType == 3) { // text
+      obj = xml.nodeValue;
+    }
+
+    // do children
+    if (xml.hasChildNodes()) {
+      for(var i = 0; i < xml.childNodes.length; i++) {
+        var item = xml.childNodes.item(i);
+        var nodeName = item.nodeName;
+        if (typeof(obj[nodeName]) == "undefined") {
+          obj[nodeName] = xmlToJson(item,withStar);
+        } else {
+          if (typeof(obj[nodeName].push) == "undefined") {
+            var old = obj[nodeName];
+            obj[nodeName] = [];
+            obj[nodeName].push(old);
+          }
+          obj[nodeName].push(xmlToJson(item,withStar));
+        }
+      }
+    }
+    if(withStar && isValidXMLStar(obj['#text'])){
+      obj['#text'] = XML_EQUAL_TO;
+    };
+    return obj;
+  };
+
     var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
 
     var domParser;
@@ -114,7 +164,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(tp === 'json' || tp !== 'xml'){
           return processUtil.getJsonOrString(vlm);
         } else {
-          try { return domParser.parseFromString(vlm); } catch(em) { }
+          try { return domParser.parseFromString(vlm,'application/xml'); } catch(em) { }
         }
       }
       return vlm;
@@ -860,18 +910,35 @@ var assert = function(validatorIdCodeMap, ass, ops){
   if(forValidator){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
-      try {
-        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
-      } catch(e){
-        ret.passed = false;
-        ret.remarks = 'An error found while validating with response validator : ' + e.message;
-        console.log(e.stack);
-      }
+      if(forValidator[0].expectedResults.resultType === 'xml' &&
+         forValidator[1].actualResults.resultType === 'xml' &&
+         ass.type === config.meta.defaultValidatorId){
+        var er, ar;
+        try {
+          er = xmlToJson(getJsonOrString(forValidator[0].expectedResults.content, 'xml'), true);
+          ar = xmlToJson(getJsonOrString(forValidator[1].actualResults.content, 'xml'));
+        } catch(erm){
+          ret.passed = false;
+          ret.remarks = 'An error found while validating with xml validator : ' + erm.message;
+          console.log(erm.stack);
+          return ret;
+        }
+        ret.passed = forValidator[2].compareJSON(util.mergeObjects(er,ar,{
+          spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr }),ar);
+      } else {
+        try {
+          ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
+        } catch(e){
+          ret.passed = false;
+          ret.remarks = 'An error found while validating with response validator : ' + e.message;
+          console.log(e.stack);
+        }
 
-      if(forValidator[1].remarks && forValidator[1].remarks.length) {
-        var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
-        ret.remarks = remarks;
-        delete forValidator[1].remarks;
+        if(forValidator[1].remarks && forValidator[1].remarks.length) {
+          var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
+          ret.remarks = remarks;
+          delete forValidator[1].remarks;
+        }
       }
     } else {
       ret.result = "Error found in evaluating linked response validator code.";
