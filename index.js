@@ -76,7 +76,7 @@ var request = require('request').defaults({jar: true, json: true}),
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
 
-  var XML_EQUAL_SIGN = '{{VREST_$_STAR}}', XML_EQUAL_TO = '{{*}}';
+  var XML_EQUAL_SIGN = '{{*}}', XML_EQUAL_TO = '{{*}}';
 
   function isValidXMLStar(vl){
     return (ReplaceModule.isWithVars(vl) && (vl.trim()) === XML_EQUAL_SIGN);
@@ -994,8 +994,10 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
     case 'textBody' :
       return { ac : actualResults.content, setActual : publicConfiguration.copyFromActual, ex : ass.value };
     case 'jsonBody' :
+    case 'xmlBody' :
       return {
-        ac : getJSONPathValue(actualJSONContent, ass.property, actualResults.resultType), ex : ass.value,
+        ac : getJSONPathValue(actualJSONContent, ass.property,
+            ass.name === 'xmlBody' ? actualResults.resultType : false), ex : ass.value,
         setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
       };
     case 'default' :
@@ -1063,6 +1065,8 @@ var setAssertionUtil = function(meta){
     } catch(el){
     }
   }
+  meta.assertTypes.xmlBody = this.getNewObj(meta.assertTypes.jsonBody);
+  meta.assertTypes.xmlBody.name = 'XML Body';
   for(ky in meta.assertTypes){
     subTypeOpts[ky] = [];
     typeOpts.push([meta.assertTypes[ky].name, ky]);
