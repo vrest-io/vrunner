@@ -144,7 +144,8 @@ var request = require('request').defaults({jar: true, json: true}),
         var thisHeading = (headings && headings.iterateNext()), resp = "";
         if(thisHeading){
           while (thisHeading) {
-            resp += thisHeading.textContent + "\n";
+            if(resp) resp += '\n';
+            resp += thisHeading.textContent;
             thisHeading = headings.iterateNext();
           }
           return resp;
