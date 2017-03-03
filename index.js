@@ -129,7 +129,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var domParser;
     if(typeof DOMParser === 'function'){
-      try { domParser = new DOMParser(); } catch(erm){ }
+      domParser = new DOMParser();
     }
     if(domParser === undefined){
       domParser = { parseFromString : function(){ return false; } }
@@ -164,7 +164,8 @@ var request = require('request').defaults({jar: true, json: true}),
         if(tp === 'json' || tp !== 'xml'){
           return processUtil.getJsonOrString(vlm);
         } else {
-          try { return domParser.parseFromString(vlm,'application/xml'); } catch(em) { }
+          var abm = domParser.parseFromString(vlm,'application/xml');
+          return abm;
         }
       }
       return vlm;
@@ -910,22 +911,22 @@ var assert = function(validatorIdCodeMap, ass, ops){
   if(forValidator){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
+
+      var defVal = true;
       if(forValidator[0].expectedResults.resultType === 'xml' &&
          forValidator[1].actualResults.resultType === 'xml' &&
          ass.type === config.meta.defaultValidatorId){
-        var er, ar;
-        try {
-          er = xmlToJson(getJsonOrString(forValidator[0].expectedResults.content, 'xml'), true);
-          ar = xmlToJson(getJsonOrString(forValidator[1].actualResults.content, 'xml'));
-        } catch(erm){
-          ret.passed = false;
-          ret.remarks = 'An error found while validating with xml validator : ' + erm.message;
-          console.log(erm.stack);
-          return ret;
+        var er = forValidator[0].expectedResults.content, ar = forValidator[1].actualResults.content;
+        er = getJsonOrString(er,'xml'); ar = getJsonOrString(ar, 'xml');
+        if(er && ar){
+          er = xmlToJson(er,true);
+          ar = xmlToJson(ar);
+          ret.passed = forValidator[2].compareJSON(util.mergeObjects(er,ar,{
+            spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr }),ar);
+          defVal = false;
         }
-        ret.passed = forValidator[2].compareJSON(util.mergeObjects(er,ar,{
-          spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr }),ar);
-      } else {
+      }
+      if(defVal) {
         try {
           ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
         } catch(e){
