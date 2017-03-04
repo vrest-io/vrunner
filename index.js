@@ -19,6 +19,8 @@ var request = require('request').defaults({jar: true, json: true}),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
     pathUtil = require('path'),
+    DOMParser = require('xmldom').DOMParser,
+    X_PATH = require('xpath'),
     btoa = require('btoa'),
     mainUrlUtil = require('url'),
     V_BASE_URL = 'https://vrest.io/',
@@ -73,6 +75,121 @@ var request = require('request').defaults({jar: true, json: true}),
 
     var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
     VARS.$ = 0;
+
+  var XML_EQUAL_SIGN = '{{*}}', XML_EQUAL_TO = '{{*}}';
+
+  function isValidXMLStar(vl){
+    return (ReplaceModule.isWithVars(vl) && (vl.trim()) === XML_EQUAL_SIGN);
+  }
+
+  // Changes XML to JSON, https://davidwalsh.name/convert-xml-json
+  function xmlToJson(xml,withStar) {
+
+    // Create the return object
+    var obj = {};
+
+    if (xml.nodeType == 1) { // element
+      // do attributes
+      if (xml.attributes.length > 0) {
+      obj["@attributes"] = {};
+        for (var j = 0; j < xml.attributes.length; j++) {
+          var attribute = xml.attributes.item(j);
+          obj["@attributes"][attribute.nodeName] =
+            (withStar && isValidXMLStar(attribute.nodeValue))? XML_EQUAL_TO : attribute.nodeValue;
+        }
+      }
+    } else if (xml.nodeType == 3) { // text
+      obj = xml.nodeValue;
+    }
+
+    // do children
+    if (xml.hasChildNodes()) {
+      for(var i = 0; i < xml.childNodes.length; i++) {
+        var item = xml.childNodes.item(i);
+        var nodeName = item.nodeName;
+        if (typeof(obj[nodeName]) == "undefined") {
+          obj[nodeName] = xmlToJson(item,withStar);
+        } else {
+          if (typeof(obj[nodeName].push) == "undefined") {
+            var old = obj[nodeName];
+            obj[nodeName] = [];
+            obj[nodeName].push(old);
+          }
+          obj[nodeName].push(xmlToJson(item,withStar));
+        }
+      }
+    }
+    if(withStar && isValidXMLStar(obj['#text'])){
+      obj['#text'] = XML_EQUAL_TO;
+    };
+    return obj;
+  };
+
+    var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
+
+    var domParser;
+    if(typeof DOMParser === 'function'){
+      domParser = new DOMParser();
+    }
+    if(domParser === undefined){
+      domParser = { parseFromString : function(){ return false; } }
+      XMLPath = function(){ return NOT_RES; };
+    } else {
+      XMLPath = function(XMLNode,path){
+        try {
+          var headings = X_PATH.evaluate(path,XMLNode,null,X_PATH.XPathResult.ANY_TYPE,null);
+        } catch(erm){
+          return NOT_RES;
+        }
+        var thisHeading = (headings && headings.iterateNext()), resp = "";
+        if(thisHeading){
+          while (thisHeading) {
+            if(resp) resp += '\n';
+            resp += thisHeading.textContent;
+            thisHeading = headings.iterateNext();
+          }
+          return resp;
+        } else {
+          return NOT_RES;
+        }
+      };
+    }
+
+    var getJsonPath = function(path){
+      if(typeof path === 'string' && path.length) {
+        if(path.charAt(0) === '$') return path;
+        return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
+      }
+    }, getJsonOrString = function(vlm,tp){
+      if(typeof vlm === 'string'){
+        if(tp === 'json' || tp !== 'xml'){
+          return processUtil.getJsonOrString(vlm);
+        } else {
+          var abm = domParser.parseFromString(vlm,'application/xml');
+          return abm;
+        }
+      }
+      return vlm;
+    };
+
+    var getJSONPathValue = function(json, path, wth){
+      var ifNotResolved = ReplaceModule.replace, tm, ret = 'V_PATH_NOT_RESOLVED', tp;
+      if(wth !== 'xml'){
+        tm = JSONPath;
+        path = getJsonPath(path);
+        if(typeof(json) != 'object' || !json) return ret;
+      } else {
+        tm = XMLPath;
+      }
+      ret = tm(json, path);
+
+      if(ret === 'V_PATH_NOT_RESOLVED' && typeof ifNotResolved === 'function') {
+        tp = ifNotResolved(path);
+        if(tp !== path) ret = tm(json, tp);
+      }
+      if(Array.isArray(ret) && ret.length === 1) return ret[0];
+      else return ret;
+    };
 
     var TotalRecords = 0;
 
@@ -777,19 +894,6 @@ var getResultType = function(response) {
   return rType;
 };
 
-var getJSONPathValue = function(path, json){
-  var ret = undefined, tp;
-  if(typeof(json) != 'object') return ret;
-  ret = JSONPath(json, path);
-
-  if(ret === 'V_PATH_NOT_RESOLVED') {
-    tp = processUtil.replacingString(path);
-    if(tp !== path) ret = JSONPath(json, tp);
-  }
-  if(Array.isArray(ret) && ret.length === 1) return ret[0];
-  else return ret;
-};
-
 var getActualResults = function(response) {
   return {
     statusCode : response.statusCode,
@@ -797,12 +901,6 @@ var getActualResults = function(response) {
     content: util.stringify(response.body, null, true),
     resultType: getResultType(response)
   };
-};
-
-var getJsonPath = function(path){
-  if(typeof path === 'string' && path.length) {
-    return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
-  }
 };
 
 var isAssertionForValidator = function(ass){
@@ -814,18 +912,35 @@ var assert = function(validatorIdCodeMap, ass, ops){
   if(forValidator){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
-      try {
-        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
-      } catch(e){
-        ret.passed = false;
-        ret.remarks = 'An error found while validating with response validator : ' + e.message;
-        console.log(e.stack);
-      }
 
-      if(forValidator[1].remarks && forValidator[1].remarks.length) {
-        var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
-        ret.remarks = remarks;
-        delete forValidator[1].remarks;
+      var defVal = true;
+      if(forValidator[0].expectedResults.resultType === 'xml' &&
+         forValidator[1].actualResults.resultType === 'xml' &&
+         ass.type === config.meta.defaultValidatorId){
+        var er = forValidator[0].expectedResults.content, ar = forValidator[1].actualResults.content;
+        er = getJsonOrString(er,'xml'); ar = getJsonOrString(ar, 'xml');
+        if(er && ar){
+          er = xmlToJson(er,true);
+          ar = xmlToJson(ar);
+          ret.passed = forValidator[2].compareJSON(util.mergeObjects(er,ar,{
+            spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr }),ar);
+          defVal = false;
+        }
+      }
+      if(defVal) {
+        try {
+          ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
+        } catch(e){
+          ret.passed = false;
+          ret.remarks = 'An error found while validating with response validator : ' + e.message;
+          console.log(e.stack);
+        }
+
+        if(forValidator[1].remarks && forValidator[1].remarks.length) {
+          var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
+          ret.remarks = remarks;
+          delete forValidator[1].remarks;
+        }
       }
     } else {
       ret.result = "Error found in evaluating linked response validator code.";
@@ -845,7 +960,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
 
 var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
-    var opts = { prefixes : ['',{}] }, jsonData = processUtil.getJsonOrString(result.content), tp;
+    var opts = { prefixes : ['',{}] }, jsonData = getJsonOrString(result.content, result.resultType), tp;
     (tcVariables || []).forEach(function(vr){
       if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
@@ -853,8 +968,8 @@ var extractVarsFrom = function(tcVariables, result, headers) {
           opts.prefixes[1].headers = headers;
           opts.prefixes[1].statusCode = result.statusCode;
           VARS[vr.name] = ReplaceModule.replace(vr.path,opts);
-        } else if(result.resultType === 'json') {
-          VARS[vr.name] = getJSONPathValue(getJsonPath(vr.path), jsonData);
+        } else {
+          VARS[vr.name] = getJSONPathValue(jsonData, vr.path, result.resultType);
         }
       }
     });
@@ -880,8 +995,10 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
     case 'textBody' :
       return { ac : actualResults.content, setActual : publicConfiguration.copyFromActual, ex : ass.value };
     case 'jsonBody' :
+    case 'xmlBody' :
       return {
-        ac : getJSONPathValue(getJsonPath(ass.property), actualJSONContent), ex : ass.value,
+        ac : getJSONPathValue(actualJSONContent, ass.property,
+            ass.name === 'xmlBody' ? actualResults.resultType : false), ex : ass.value,
         setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
       };
     case 'default' :
@@ -895,7 +1012,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
     toSendTC = _.extend(tc.lastSend, { expectedResults : (tc.getTc('expectedResults',true)) }),
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
-  toSendTC.expectedResults.contentSchema = processUtil.getJsonOrString(jsonSchema);
+  toSendTC.expectedResults.contentSchema = getJsonOrString(jsonSchema);
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
@@ -911,9 +1028,12 @@ var setFinalExpContent = function(er,ar){
     if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1), exCont = processUtil.getJsonOrString(er.content);
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1),
+        exCont = getJsonOrString(er.content, er.resultType);
       if(typeof exCont === 'object'){
-        if(isSpcl) exCont = util.mergeObjects(exCont, processUtil.getJsonOrString(ar.content), { spcl : spcl });
+        if(isSpcl) {
+          exCont = util.mergeObjects(exCont, getJsonOrString(ar.content,ar.resultType), { spcl : spcl });
+        }
         er.content = util.stringify(exCont);
       }
     } else {
@@ -946,6 +1066,8 @@ var setAssertionUtil = function(meta){
     } catch(el){
     }
   }
+  meta.assertTypes.xmlBody = this.getNewObj(meta.assertTypes.jsonBody);
+  meta.assertTypes.xmlBody.name = 'XML Body';
   for(ky in meta.assertTypes){
     subTypeOpts[ky] = [];
     typeOpts.push([meta.assertTypes[ky].name, ky]);
@@ -964,7 +1086,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
   var isPassed = true, toValidate = false, headers = {},
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
-  var actualJSONContent = processUtil.getJsonOrString(actualResults.content),
+  var actualJSONContent = getJsonOrString(actualResults.content, actualResults.resultType),
       findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
