@@ -739,9 +739,11 @@ HookRunner.prototype.sendToServer = function(trtc){
     }
     self.pendingTrtc = [];
     var lastOp = function(err,res,body){
-      if(err || !body || body.error) {
+      var ster = res.statusCode !== 200;
+      if(err || !body || body.error || ster) {
         self.emit('warning',
-          util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+          util.stringify(err||body||ster ? 'Result could not be saved due to some unknown error.'
+            : 'Connection could not be established to save the execution results.',true,true));
       }
     };
     request({ method: 'POST', uri: self.instanceURL+'/bulk/'+(self.pushResultName || 'testruntestcase'), body: toSend }, lastOp);
@@ -751,6 +753,13 @@ HookRunner.prototype.sendToServer = function(trtc){
   } else if(typeof trtc === 'number' && trtc && this.stopped){
     sendNow(trtc);
   } else if(typeof trtc === 'object' && trtc) {
+    var op = ['result', 'expectedResults'], lop = op.length;
+    for(var nm = 0; nm < lop; nm++){
+      if(trtc.hasOwnProperty(op[nm])){
+        delete trtc[op[nm]].parsedContent;
+        delete trtc[op[nm]]._parsedContent;
+      }
+    }
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
   }
@@ -1032,7 +1041,7 @@ var setFinalExpContent = function(er,ar){
         util.mergeObjects(erj, arj, { spcl : spcl });
       }
       if(er.resultType === 'json'){
-        er.content = this.stringify(erj);
+        er.content = util.stringify(erj);
       }
     } else {
       er.content = processUtil.replacingString(er.content);
@@ -1064,7 +1073,7 @@ var setAssertionUtil = function(meta){
     } catch(el){
     }
   }
-  meta.assertTypes.xmlBody = this.getNewObj(meta.assertTypes.jsonBody);
+  meta.assertTypes.xmlBody = util.cloneObject(meta.assertTypes.jsonBody);
   meta.assertTypes.xmlBody.name = 'XML Body';
   for(ky in meta.assertTypes){
     subTypeOpts[ky] = [];
