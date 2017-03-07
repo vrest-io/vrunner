@@ -125,6 +125,10 @@ var request = require('request').defaults({jar: true, json: true}),
     return obj;
   };
 
+  function getTextContent(str){
+    return str.trim();
+  }
+
     var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
 
     var domParser;
@@ -145,7 +149,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(thisHeading){
           while (thisHeading) {
             if(resp) resp += '\n';
-            resp += thisHeading.textContent;
+            resp += getTextContent(thisHeading.textContent);
             thisHeading = headings.iterateNext();
           }
           return resp;
@@ -170,6 +174,19 @@ var request = require('request').defaults({jar: true, json: true}),
         }
       }
       return vlm;
+    }, parseFromContentAndSet = function(result, prop, isEx){
+      var prop = (prop || '') + 'parsedContent';
+      if(!(result.hasOwnProperty(prop))){
+        result._parsedContent = getJsonOrString(result.content,result.resultType);
+        if(result._parsedContent){
+          if(result.resultType === 'json'){
+            result.parsedContent = result._parsedContent;
+          } else if(result.resultType === 'xml' && prop.charAt(0) === 'p'){
+            result.parsedContent = processUtil[isEx ? 'starXmlToJson' : 'xmlToJson'](jsonData);
+          }
+        }
+      }
+      return result[prop];
     };
 
     var getJSONPathValue = function(json, path, wth){
@@ -726,9 +743,11 @@ HookRunner.prototype.sendToServer = function(trtc){
     }
     self.pendingTrtc = [];
     var lastOp = function(err,res,body){
-      if(err || !body || body.error) {
+      var ster = res.statusCode !== 200;
+      if(err || !body || body.error || ster) {
         self.emit('warning',
-          util.stringify(err||body||'Connection could not be established to save the execution results.',true,true));
+          util.stringify(err||body||ster ? 'Result could not be saved due to some unknown error.'
+            : 'Connection could not be established to save the execution results.',true,true));
       }
     };
     request({ method: 'POST', uri: self.instanceURL+'/bulk/'+(self.pushResultName || 'testruntestcase'), body: toSend }, lastOp);
@@ -738,6 +757,13 @@ HookRunner.prototype.sendToServer = function(trtc){
   } else if(typeof trtc === 'number' && trtc && this.stopped){
     sendNow(trtc);
   } else if(typeof trtc === 'object' && trtc) {
+    var op = ['result', 'expectedResults'], lop = op.length;
+    for(var nm = 0; nm < lop; nm++){
+      if(trtc.hasOwnProperty(op[nm])){
+        delete trtc[op[nm]].parsedContent;
+        delete trtc[op[nm]]._parsedContent;
+      }
+    }
     this.pendingTrtc.push(trtc);
     if(this.pendingTrtc.length === TRTC_BATCH) sendNow();
   }
@@ -912,35 +938,17 @@ var assert = function(validatorIdCodeMap, ass, ops){
   if(forValidator){
     ret.assertion = { name : 'textBody', type : ass.type };
     if(typeof validatorIdCodeMap[ass.type] === 'function') {
-
-      var defVal = true;
-      if(forValidator[0].expectedResults.resultType === 'xml' &&
-         forValidator[1].actualResults.resultType === 'xml' &&
-         ass.type === config.meta.defaultValidatorId){
-        var er = forValidator[0].expectedResults.content, ar = forValidator[1].actualResults.content;
-        er = getJsonOrString(er,'xml'); ar = getJsonOrString(ar, 'xml');
-        if(er && ar){
-          er = xmlToJson(er,true);
-          ar = xmlToJson(ar);
-          ret.passed = forValidator[2].compareJSON(util.mergeObjects(er,ar,{
-            spcl : config.meta.startVarExpr + '*' + config.meta.endVarExpr }),ar);
-          defVal = false;
-        }
+      try {
+        ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
+      } catch(e){
+        ret.passed = false;
+        ret.remarks = 'An error found while validating with response validator : ' + e.message;
+        console.log(e.stack);
       }
-      if(defVal) {
-        try {
-          ret.passed = validatorIdCodeMap[ass.type].apply(undefined, forValidator);
-        } catch(e){
-          ret.passed = false;
-          ret.remarks = 'An error found while validating with response validator : ' + e.message;
-          console.log(e.stack);
-        }
-
-        if(forValidator[1].remarks && forValidator[1].remarks.length) {
-          var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
-          ret.remarks = remarks;
-          delete forValidator[1].remarks;
-        }
+      if(forValidator[1].remarks && forValidator[1].remarks.length) {
+        var remarks = util.cropString(JSON.stringify(forValidator[1].remarks), 1995);
+        ret.remarks = remarks;
+        delete forValidator[1].remarks;
       }
     } else {
       ret.result = "Error found in evaluating linked response validator code.";
@@ -960,7 +968,7 @@ var assert = function(validatorIdCodeMap, ass, ops){
 
 var extractVarsFrom = function(tcVariables, result, headers) {
   if(result && result.resultType){
-    var opts = { prefixes : ['',{}] }, jsonData = getJsonOrString(result.content, result.resultType), tp;
+    var opts = { prefixes : ['',{}] }, jsonData = parseFromContentAndSet(result, '_'), tp;
     (tcVariables || []).forEach(function(vr){
       if(vr.name && vr.path && vr.type === 'json'){
         if(vr.path.indexOf(config.meta.startVarExpr) === 0 && vr.path.indexOf(config.meta.endVarExpr) !== -1){
@@ -977,7 +985,7 @@ var extractVarsFrom = function(tcVariables, result, headers) {
   return;
 };
 
-var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, executionTime){
+var findExAndAc = function(headersMap, ass, actualResults, executionTime){
   if(util.v_asserts.shouldAddProperty(ass.name)) {
     ass.property = processUtil.replacingString(ass.property, publicConfiguration);
   } else delete ass.property;
@@ -997,9 +1005,10 @@ var findExAndAc = function(headersMap, ass, actualResults, actualJSONContent, ex
     case 'jsonBody' :
     case 'xmlBody' :
       return {
-        ac : getJSONPathValue(actualJSONContent, ass.property,
+        ac : getJSONPathValue(actualResults.parsedContent, ass.property,
             ass.name === 'xmlBody' ? actualResults.resultType : false), ex : ass.value,
-        setActual : (typeof actualJSONContent === 'object') ? (publicConfiguration.copyFromActual+'json') : false
+        setActual : (typeof actualResults.parsedContent === 'object') ?
+                  (config.meta.copyFromActual+'json') : false
       };
     case 'default' :
       return {};
@@ -1013,6 +1022,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
     toSendTRTC = { headers : headersMap },
     jsonSchema = (tc.expectedResults && tc.expectedResults.contentSchema) || '{}';
   toSendTC.expectedResults.contentSchema = getJsonOrString(jsonSchema);
+  parseFromContentAndSet(toSendTC.expectedResults, '_');
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
@@ -1027,14 +1037,15 @@ var setFinalExpContent = function(er,ar){
     toSet = true;
     if(er.content === spcl) {
       er.content = ar.content;
-    } else if(er.resultType === 'json'){
-      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1),
-        exCont = getJsonOrString(er.content, er.resultType);
-      if(typeof exCont === 'object'){
-        if(isSpcl) {
-          exCont = util.mergeObjects(exCont, getJsonOrString(ar.content,ar.resultType), { spcl : spcl });
-        }
-        er.content = util.stringify(exCont);
+    } else if(er.resultType === 'json' || er.resultType === 'xml') {
+      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1);
+      var erj = parseFromContentAndSet(er, false, true);
+      var arj = parseFromContentAndSet(ar, false);
+      if(typeof erj === 'object' && isSpcl){
+        util.mergeObjects(erj, arj, { spcl : spcl });
+      }
+      if(er.resultType === 'json'){
+        er.content = util.stringify(erj);
       }
     } else {
       er.content = processUtil.replacingString(er.content);
@@ -1066,7 +1077,7 @@ var setAssertionUtil = function(meta){
     } catch(el){
     }
   }
-  meta.assertTypes.xmlBody = this.getNewObj(meta.assertTypes.jsonBody);
+  meta.assertTypes.xmlBody = util.cloneObject(meta.assertTypes.jsonBody);
   meta.assertTypes.xmlBody.name = 'XML Body';
   for(ky in meta.assertTypes){
     subTypeOpts[ky] = [];
@@ -1086,18 +1097,20 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
   var isPassed = true, toValidate = false, headers = {},
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
-  var actualJSONContent = getJsonOrString(actualResults.content, actualResults.resultType),
-      findEx = findExAndAc.bind(undefined, headers),
+  var findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
   (tc.getTc('assertions') || []).forEach(function(ass){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
-        initForVal(runnerModel, applyToValidator, tc);
+        var erm = tc.expectedResults;
+        if(!(erm.hasOwnProperty('parsedContent'))){
+          initForVal(runnerModel, applyToValidator, tc);
+        }
         now = asserting(ass, { forValidator : applyToValidator });
       } else {
-        now = asserting(ass, findEx(ass, actualResults, actualJSONContent, runnerModel.executionTime));
+        now = asserting(ass, findEx(ass, actualResults, runnerModel.executionTime));
       }
       if(now){
         ret.push(now);
