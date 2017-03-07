@@ -99,7 +99,9 @@ var request = require('request').defaults({jar: true, json: true}),
         }
       }
     } else if (xml.nodeType == 3) { // text
-      obj = xml.nodeValue;
+      obj = getTextContent(xml.nodeValue);
+    } else if (xml.nodeType == 4) { // text
+      return xml.textContent;
     }
 
     // do children
