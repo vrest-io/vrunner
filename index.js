@@ -125,6 +125,10 @@ var request = require('request').defaults({jar: true, json: true}),
     return obj;
   };
 
+  function getTextContent(str){
+    return str.trim();
+  }
+
     var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
 
     var domParser;
@@ -145,7 +149,7 @@ var request = require('request').defaults({jar: true, json: true}),
         if(thisHeading){
           while (thisHeading) {
             if(resp) resp += '\n';
-            resp += thisHeading.textContent;
+            resp += getTextContent(thisHeading.textContent);
             thisHeading = headings.iterateNext();
           }
           return resp;
