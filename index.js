@@ -1,6 +1,6 @@
 /*
  * vrunner
- * http://vrest.io
+ * https://vrest.io
  *
  * Copyright (c) 2015 vREST Team
  * Licensed under the MIT license.
