@@ -1,6 +1,6 @@
 /*
  * vrunner
- * http://vrest.io
+ * https://vrest.io
  *
  * Copyright (c) 2015 vREST Team
  * Licensed under the MIT license.
@@ -99,7 +99,9 @@ var request = require('request').defaults({jar: true, json: true}),
         }
       }
     } else if (xml.nodeType == 3) { // text
-      obj = xml.nodeValue;
+      obj = getTextContent(xml.nodeValue);
+    } else if (xml.nodeType == 4) { // text
+      return xml.textContent;
     }
 
     // do children
@@ -109,7 +111,7 @@ var request = require('request').defaults({jar: true, json: true}),
         var nodeName = item.nodeName;
         if (typeof(obj[nodeName]) == "undefined") {
           obj[nodeName] = xmlToJson(item,withStar);
-        } else {
+        } else if(nodeName !== '#text'){
           if (typeof(obj[nodeName].push) == "undefined") {
             var old = obj[nodeName];
             obj[nodeName] = [];
@@ -182,7 +184,7 @@ var request = require('request').defaults({jar: true, json: true}),
           if(result.resultType === 'json'){
             result.parsedContent = result._parsedContent;
           } else if(result.resultType === 'xml' && prop.charAt(0) === 'p'){
-            result.parsedContent = processUtil[isEx ? 'starXmlToJson' : 'xmlToJson'](jsonData);
+            result.parsedContent = processUtil[isEx ? 'starXmlToJson' : 'xmlToJson'](result._parsedContent);
           }
         }
       }
