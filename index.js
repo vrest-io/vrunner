@@ -111,7 +111,7 @@ var request = require('request').defaults({jar: true, json: true}),
         var nodeName = item.nodeName;
         if (typeof(obj[nodeName]) == "undefined") {
           obj[nodeName] = xmlToJson(item,withStar);
-        } else {
+        } else if(nodeName !== '#text'){
           if (typeof(obj[nodeName].push) == "undefined") {
             var old = obj[nodeName];
             obj[nodeName] = [];
