@@ -1,6 +1,8 @@
 # vrunner
 
-> Runs vREST test cases on terminal.
+1. Executes test cases on terminal which are stored in [vREST](https://vrest.io).
+2. vrunner command can be used in any third party schedular like cron to schedule test cases. For more information, please read our [guide](https://docs.optimizory.com/x/wJGz).
+3. vrunner command can be used in any continuous integration server like Jenkins etc. For more information, please read our [guide](https://docs.optimizory.com/x/HAGq).
 
 #### Prerequisites:
 * Node.js - Download and Install [Node.js](https://nodejs.org/en/download/). You can also follow this wiki (https://nodejs.org/en/download/package-manager/)

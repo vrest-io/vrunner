@@ -1,8 +1,8 @@
 {
   "name": "vrunner",
-  "description": "Runs vREST test cases",
-  "version": "0.2.24",
-  "homepage": "http://vrest.io",
+  "description": "Executes vREST test cases on terminal and can be used with cron utility or any continuous integration server.",
+  "version": "0.2.25",
+  "homepage": "https://vrest.io",
   "author": {
     "name": "vREST Team",
     "email": "team@vrest.io"
