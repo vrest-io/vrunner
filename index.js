@@ -184,7 +184,7 @@ var request = require('request').defaults({jar: true, json: true}),
           if(result.resultType === 'json'){
             result.parsedContent = result._parsedContent;
           } else if(result.resultType === 'xml' && prop.charAt(0) === 'p'){
-            result.parsedContent = processUtil[isEx ? 'starXmlToJson' : 'xmlToJson'](jsonData);
+            result.parsedContent = processUtil[isEx ? 'starXmlToJson' : 'xmlToJson'](result._parsedContent);
           }
         }
       }
