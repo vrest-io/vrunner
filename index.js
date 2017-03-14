@@ -35,6 +35,7 @@ var request = require('request').defaults({jar: true, json: true}),
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
     pages = [false],
     MAIN_AUTHORIZATIONS = {},
+    SAVING_RESULTS = 0,
     MAIN_COLLECTION = [],
     PRE_HOOK_COL = [],
     POST_HOOK_COL = [],
@@ -745,6 +746,7 @@ HookRunner.prototype.sendToServer = function(trtc){
     }
     self.pendingTrtc = [];
     var lastOp = function(err,res,body){
+      SAVING_RESULTS--;
       var ster = res.statusCode !== 200;
       if(err || !body || body.error || ster) {
         self.emit('warning',
@@ -752,6 +754,7 @@ HookRunner.prototype.sendToServer = function(trtc){
             : 'Connection could not be established to save the execution results.',true,true));
       }
     };
+    SAVING_RESULTS++;
     request({ method: 'POST', uri: self.instanceURL+'/bulk/'+(self.pushResultName || 'testruntestcase'), body: toSend }, lastOp);
   };
   if(trtc === 'OVER'){
@@ -1302,9 +1305,23 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
           : util.cropString(util.stringify(error), RUNNER_LIMIT)) :
         getRemarks(report.total, report.passed, report.failed, report.notExecuted, report.notRunnable)
   }}, function(err,response,body){
-    if(error) self.emit('end',error);
-    else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
-    else self.emit('end',null, body.output.statistics, body.output.remarks);
+    var tcy = 0;
+    var checkExit = function(){
+      if(SAVING_RESULTS){
+        if(tcy > 1000){
+          self.emit('warning', 'Test run results could not be saved ... TIMEOUT');
+        } else {
+          tcy++;
+          console.log('Please wait while test run results being saved ...');
+          return;
+        }
+      }
+      clearInterval(checkExit);
+      if(error) self.emit('end',error);
+      else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
+      else self.emit('end',null, body.output.statistics, body.output.remarks);
+    };
+    setInterval(checkExit, 500);
   });
 };
 
