@@ -71,6 +71,7 @@ var request = require('request').defaults({jar: true, json: true}),
       validatorIdCodeMap : {}
     },
     config = {
+      invalidLpCond : 'V_INVALID_LOOP',
       meta : publicConfiguration
     };
 
@@ -473,6 +474,9 @@ RunnerModel.prototype = {
   shouldRun : function(){
     var mk = this.getTc('condition',true);
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
+    if(this.currentCondition === config.invalidLpCond){
+      return false;
+    }
     return processUtil.isConditionPassed(mk);
   }
 };
@@ -628,7 +632,11 @@ var forOneTc = function(report,tc,cb0){
       if(notRunnable) {
         if(typeof notRunnable === 'string'){
           trtc.result.content = notRunnable;
-          remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
+          if(tc.condition === config.invalidLpCond){
+            remarks = 'Loop source was invalid. It must be an array variable or a number.';
+          } else {
+            remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
+          }
         } else {
           remarks = 'Test '+ wt +' was not runnable.';
         }
@@ -1202,7 +1210,7 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
         if(stMod && tsId === stMod.testSuiteId){
           var lps = this.shouldLoop(lp, noUpdate);
           if(lps === 0){
-            runModel.condition = 'false';
+            runModel.condition = config.invalidLpCond;
             return false;
           } else if((!(noUpdate)) && nIndex !== -1 && nIndex <= runModelIndex && lps){
             this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
