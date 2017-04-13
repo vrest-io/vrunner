@@ -1051,7 +1051,7 @@ var setFinalExpContent = function(er,ar){
     if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json' || er.resultType === 'xml') {
-      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1);
+      var spclIn = er.content.indexOf(spcl), isSpcl = true;
       var erj = parseFromContentAndSet(er, false, true);
       var arj = parseFromContentAndSet(ar, false);
       if(typeof erj === 'object' && isSpcl){
