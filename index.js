@@ -443,7 +443,7 @@ RunnerModel.prototype = {
       if(['headers','params','assertions'].indexOf(prop) !== -1){
         return forArray(ts);
       }
-      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
+      return (withReplace && (['url','condition','externalId'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
     }
   },
 
@@ -696,7 +696,11 @@ var forOneTc = function(report,tc,cb0){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
         if(!(tc.canHook)){
-          VARS.$tc.details = { id : tc.id, summary : tc.getTc('summary') };
+          VARS.$tc.details = {
+            id : tc.id,
+            externalId : tc.getTc('externalId',true),
+            summary : tc.getTc('summary')
+          };
           VARS.$tc.request = {
             url : tc.getTc('url'), method : tc.getTc('method'),
             params : tc.getTc('params'), headers : tc.getTc('headers')
