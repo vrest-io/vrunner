@@ -71,6 +71,7 @@ var request = require('request').defaults({jar: true, json: true}),
       validatorIdCodeMap : {}
     },
     config = {
+      invalidLpCond : 'V_INVALID_LOOP',
       meta : publicConfiguration
     };
 
@@ -442,7 +443,7 @@ RunnerModel.prototype = {
       if(['headers','params','assertions'].indexOf(prop) !== -1){
         return forArray(ts);
       }
-      return (withReplace && (['url','condition'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
+      return (withReplace && (['url','condition','externalId'].indexOf(prop) !== -1)) ? ReplaceModule.replace(ts) : ts;
     }
   },
 
@@ -473,6 +474,9 @@ RunnerModel.prototype = {
   shouldRun : function(){
     var mk = this.getTc('condition',true);
     this.currentCondition = (typeof mk === 'string') ? mk : JSON.stringify(mk);
+    if(this.currentCondition === config.invalidLpCond){
+      return false;
+    }
     return processUtil.isConditionPassed(mk);
   }
 };
@@ -628,7 +632,11 @@ var forOneTc = function(report,tc,cb0){
       if(notRunnable) {
         if(typeof notRunnable === 'string'){
           trtc.result.content = notRunnable;
-          remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
+          if(tc.condition === config.invalidLpCond){
+            remarks = 'Loop source was invalid. It must be an array variable or a number.';
+          } else {
+            remarks = 'Test '+ wt +' condition was failed, so was not runnable.';
+          }
         } else {
           remarks = 'Test '+ wt +' was not runnable.';
         }
@@ -688,7 +696,11 @@ var forOneTc = function(report,tc,cb0){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
         if(!(tc.canHook)){
-          VARS.$tc.details = { id : tc.id, summary : tc.getTc('summary') };
+          VARS.$tc.details = {
+            id : tc.id,
+            externalId : tc.getTc('externalId',true),
+            summary : tc.getTc('summary')
+          };
           VARS.$tc.request = {
             url : tc.getTc('url'), method : tc.getTc('method'),
             params : tc.getTc('params'), headers : tc.getTc('headers')
@@ -1043,7 +1055,7 @@ var setFinalExpContent = function(er,ar){
     if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json' || er.resultType === 'xml') {
-      var spclIn = er.content.indexOf(spcl), isSpcl = (spclIn !== -1);
+      var spclIn = er.content.indexOf(spcl), isSpcl = true;
       var erj = parseFromContentAndSet(er, false, true);
       var arj = parseFromContentAndSet(ar, false);
       if(typeof erj === 'object' && isSpcl){
@@ -1202,7 +1214,7 @@ var setupLoopAlgo = function(runModelIndex, noUpdate){
         if(stMod && tsId === stMod.testSuiteId){
           var lps = this.shouldLoop(lp, noUpdate);
           if(lps === 0){
-            runModel.condition = 'false';
+            runModel.condition = config.invalidLpCond;
             return false;
           } else if((!(noUpdate)) && nIndex !== -1 && nIndex <= runModelIndex && lps){
             this.totalRecords = this.totalRecords + runModelIndex - nIndex + 1;
