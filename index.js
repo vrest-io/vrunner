@@ -1464,7 +1464,14 @@ vRunner.prototype.run = function(next){
               var result = sk.draft03Validator(av,bv);
               bv.vrest_schemaErrors = result.errors || [];
               return result.valid;
-            } else return ZSV.validate.call(ZSV,av,bv);
+            } else {
+              try {
+                return ZSV.validate.call(ZSV,av,bv);
+              } catch(erm){
+                console.log(erm);
+                return false;
+              }
+            }
           };
           funcVars.lastSchemaErrors = function(av,bv){
             if(ifDraft03(av)){ return av.vrest_schemaErrors; } else return ZSV.getLastErrors.call(ZSV,av,bv);
