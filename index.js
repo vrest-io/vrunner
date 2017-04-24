@@ -1428,6 +1428,21 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
+      findHelpers(self, 'testsuite', function(err,records){
+        if(err) cb(err, 'VRUN_OVER');
+        else {
+          var testSuiteMap = {};
+          if(Array.isArray(records)){
+            for(var k=0;k<records.length;k++){
+              testSuiteMap[records[k].id] = records[k].name;
+            }
+          }
+          self.emit('testsuites',testSuiteMap);
+          cb();
+        }
+      });
+    },
+    function(cb){
       findHelpers(self, 'publicConfiguration', function(err,body){
         if(err || !body || body.error) cb(['Error while fetching '+what+'s :', err||body], 'VRUN_OVER');
         else {
@@ -1520,6 +1535,7 @@ vRunner.prototype.run = function(next){
           console.log('INFO => Test run name : '+testrun.name);
           self.testRunName = testrun.name;
           self.testRunId = testrun.id;
+          self.emit('testrun',testrun);
           cb();
         }
       });
