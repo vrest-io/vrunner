@@ -15,50 +15,50 @@ opts.forEach(function(arg){
   var ind = arg.indexOf('=');
   if(ind === -1) return showHelp = true;
   else var key = arg.substr(0,ind), value = arg.substr(ind+1);
-  switch(key){
-    case '-E':
+  switch(key.toLowerCase()){
+    case '-e':
     case '--email':
       options.credentials.email = value;
       break;
-    case '-P':
+    case '-p':
     case '--password':
       options.credentials.password = value;
       break;
-    case '-L':
+    case '-l':
     case '--logger':
       options.logger = value;
       break;
-    case '-F':
+    case '-f':
     case '--filepath':
       options.filePath = value;
       break;
-    case '-N':
+    case '-n':
     case '--env':
       options.projEnv = value;
       break;
-    case '-D':
+    case '-d':
     case '--debug':
       options.debugging = (value === 'true');
       break;
-    case '-T':
+    case '-t':
     case '--timeout':
       options.timeout = value;
       break;
     case '--vrestbaseurl':
       options.vRESTBaseUrl = value;
       break;
-    case '-S':
+    case '-s':
     case '--nosslcheck':
       options.nosslcheck = (value === 'true');
       break;
-    case '-U':
+    case '-u':
     case '--url':
       options.url = value;
       break;
-    case '-H':
+    case '-h':
     case '--help':
     default :
-      console.log('    --> INVALID ARGUMENTS PROVIDED ...! Try again with valid arguments.');
+      console.log('    --> INVALID ARGUMENT `'+key+'` PROVIDED ...! Try again with valid arguments.');
       showHelp = true;
   }
 });
