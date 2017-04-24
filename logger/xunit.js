@@ -25,7 +25,6 @@ module.exports = function(args){
     console.log(log);
   };
   args.runner.once('testsuites',function(mp){
-    console.log(mp);
     testSuitesMap = mp;
   });
   args.runner.once('testrun',function(mp){
