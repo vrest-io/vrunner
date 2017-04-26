@@ -659,29 +659,28 @@ var forOneTc = function(report,tc,cb0){
       trtc.isPassed = isPassed;
     }
     if(!trtc.remarks) trtc.remarks = remarks;
+    VARS.$tc.execution = {
+      request : _.extend({},trtc.runnerCase),
+      response : { headers : JSON.stringify(result.headers), body : result.body },
+      statusCode : result.statusCode || 0
+    };
+    try {
+      VARS.$tc.execution.request.headers = JSON.stringify(VARS.$tc.execution.request.headers)
+    } catch(erm){ }
+    VARS.$tc.result = {
+      isExecuted : trtc.isExecuted,
+      isPassed : trtc.isPassed,
+      isRunnable : trtc.isExecuted || Boolean(notRunnable),
+      resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
+        '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
+    };
+    self.emit('after-post-tc',VARS.$tc);
     if(tc.canHook){
       if(report.total >= (RUNNER_LIMIT - 1)){
         self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
       } else if(self.stopUponFirstFailureInTestRun && (!isPassed && tc.runnable)){
         self.stopped = true;
       }
-    } else {
-      VARS.$tc.execution = {
-        request : trtc.runnerCase || {},
-        response : { headers : response.headers, body : response.body },
-        statusCode : response.statusCode || 0
-      };
-      try {
-        VARS.$tc.execution.request.headers = JSON.parse(VARS.$tc.execution.request.headers)
-      } catch(erm){ }
-      VARS.$tc.result = {
-        isExecuted : trtc.isExecuted,
-        isPassed : trtc.isPassed,
-        isRunnable : trtc.isExecuted || Boolean(notRunnable),
-        resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
-          '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
-      };
-      self.emit('after-post-tc',VARS.$tc);
     }
     over();
   };
