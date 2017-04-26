@@ -709,7 +709,12 @@ var forOneTc = function(report,tc,cb0){
             VARS.$tc.request.rawBody = tc.getTc('raw').content;
           }
         }
-        var tcToExecute = tc.getTcToExecute();
+        try {
+          var tcToExecute = tc.getTcToExecute();
+        } catch(err){
+          console.log(err);
+          return handleAPIResponse(null, err.message || err);
+        }
         fireRequest(tcToExecute,trtc, self.timeout, function(result){
           handleAPIResponse(result.response, result.err);
         });
