@@ -681,6 +681,7 @@ var forOneTc = function(report,tc,cb0){
         resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
           '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
       };
+      self.emit('after-post-tc',VARS.$tc);
     }
     over();
   };
@@ -1384,6 +1385,7 @@ vRunner.prototype.afterComplete = function(report){
     remarks : rmk || '',
     resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
   };
+  this.emit('after-post-run',VARS.$tr);
   if(PSTR_HOOK_RUNNER){
     PSTR_HOOK_RUNNER.currTcIndex = -2;
     callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
