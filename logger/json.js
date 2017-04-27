@@ -1,39 +1,21 @@
 'use strict';
 
-var common = require('./common'), util = require('./../lib/util'),
-    fs = require('fs'), mainJson = { logs : [], testcases : [], errors : [], warnings : [] };
+var common = require('./common'), util = require('./../lib/util'), fs = require('fs');
+
+var mainFile = [], tcs = [];
 
 module.exports = function(args){
   args.logger = function(log){
     console.log(log);
   };
+  args.runner.once('after-post-run',function(ob){
+    mainFile.push(JSON.parse(JSON.stringify(ob)));
+    mainFile[0].detailedReport = tcs;
+  });
+  args.runner.on('after-post-tc',function(ob){
+    tcs.push(ob);
+  });
   args.testcaseLogger = function(log,tc,trtc,stats){
-    var toPush = {
-      executionDetails : {
-        request : {
-          method : trtc.runnerCase.method,
-          url : trtc.runnerCase.url,
-          headers : util.parseObject(trtc.runnerCase.headers),
-          body : trtc.runnerCase.body
-        },
-        response : {
-          statusCode : trtc.result.statusCode,
-          headers : util.arrayToMap(trtc.result.headers),
-          content : trtc.result.content
-        }
-      },
-      isExecuted : trtc.isExecuted,
-      isPassed : trtc.isPassed,
-      summary : tc.summary,
-      url : tc.url,
-      remarks : trtc.remarks,
-      executionTime : trtc.executionTime,
-      testCaseId : tc.id,
-      loopIndex : trtc.loopIndex,
-      detailedInfoURL : args.runner.instanceURL + '/' + args.runner.projectKey +
-        '/testcase?testRunId='+trtc.testRunId+'&showResponse=true&queryText='+trtc.testCaseId
-    };
-    mainJson.testcases.push(toPush);
   };
   args.errorLogger = function(log){
     console.log(log);
@@ -42,15 +24,11 @@ module.exports = function(args){
     console.log(log);
   };
   args.remarksLogger = function(log){
-    mainJson.remarks = log;
   };
   args.reportsLogger = function(log){
-    mainJson.report = log;
-    mainJson.testRunName = args.runner.testRunName;
-    mainJson.testRunLink = args.runner.instanceURL + '/' + args.runner.projectKey + '/testcase?testRunId='+args.runner.testRunId;
   };
   args.runner.on('done',function(){
-    util.writeToFile(args.runner.filePath, util.stringify(mainJson, ' '));
+    util.writeToFile(args.runner.filePath, util.stringify(mainFile, '  '));
   });
   common(args);
 };
