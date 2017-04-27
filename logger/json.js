@@ -9,7 +9,6 @@ module.exports = function(args){
     console.log(log);
   };
   args.runner.once('after-post-run',function(ob){
-    console.log(ob);
     mainFile.push(JSON.parse(JSON.stringify(ob)));
     mainFile[0].detailedReport = tcs;
   });
@@ -29,7 +28,7 @@ module.exports = function(args){
   args.reportsLogger = function(log){
   };
   args.runner.on('done',function(){
-    util.writeToFile(args.runner.filePath, util.stringify(mainFile, ' '));
+    util.writeToFile(args.runner.filePath, util.stringify(mainFile, '  '));
   });
   common(args);
 };
