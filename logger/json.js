@@ -13,7 +13,7 @@ module.exports = function(args){
     mainFile.detailedReport = tcs;
   });
   args.runner.on('after-post-tc',function(ob){
-    tcs.push(ob);
+    tcs.push(JSON.parse(JSON.stringify(ob)));
   });
   args.testcaseLogger = function(log,tc,trtc,stats){
   };
@@ -24,6 +24,7 @@ module.exports = function(args){
     console.log(log);
   };
   args.remarksLogger = function(log){
+    mainFile.result.remarks = log;
   };
   args.reportsLogger = function(log){
   };
