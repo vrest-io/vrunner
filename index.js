@@ -1034,7 +1034,7 @@ var findExAndAc = function(headersMap, ass, actualResults, executionTime){
         setActual : (typeof actualResults.parsedContent === 'object') ?
                   (config.meta.copyFromActual+'json') : false
       };
-    case 'default' :
+    default :
       return {};
   }
 };
