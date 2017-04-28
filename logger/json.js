@@ -2,18 +2,18 @@
 
 var common = require('./common'), util = require('./../lib/util'), fs = require('fs');
 
-var mainFile = [], tcs = [];
+var mainFile = {}, tcs = [];
 
 module.exports = function(args){
   args.logger = function(log){
     console.log(log);
   };
   args.runner.once('after-post-run',function(ob){
-    mainFile.push(JSON.parse(JSON.stringify(ob)));
-    mainFile[0].detailedReport = tcs;
+    mainFile = JSON.parse(JSON.stringify(ob));
+    mainFile.detailedReport = tcs;
   });
   args.runner.on('after-post-tc',function(ob){
-    tcs.push(ob);
+    tcs.push(JSON.parse(JSON.stringify(ob)));
   });
   args.testcaseLogger = function(log,tc,trtc,stats){
   };
@@ -24,6 +24,7 @@ module.exports = function(args){
     console.log(log);
   };
   args.remarksLogger = function(log){
+    mainFile.result.remarks = log;
   };
   args.reportsLogger = function(log){
   };

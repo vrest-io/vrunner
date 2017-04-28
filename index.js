@@ -661,11 +661,14 @@ var forOneTc = function(report,tc,cb0){
     if(!trtc.remarks) trtc.remarks = remarks;
     VARS.$tc.execution = {
       request : _.extend({},trtc.runnerCase),
-      response : { headers : JSON.stringify(result.headers), body : result.body },
-      statusCode : result.statusCode || 0
+      response : {
+        headers : util.stringify((result && result.headers) || {}),
+        body : (result && result.body) || ''
+      },
+      statusCode : (result && result.statusCode) || 0
     };
     try {
-      VARS.$tc.execution.request.headers = JSON.stringify(VARS.$tc.execution.request.headers)
+      VARS.$tc.execution.request.headers = util.stringify(VARS.$tc.execution.request.headers)
     } catch(erm){ }
     VARS.$tc.result = {
       isExecuted : trtc.isExecuted,
@@ -695,19 +698,18 @@ var forOneTc = function(report,tc,cb0){
     if(tc.shouldRun()){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
-        if(!(tc.canHook)){
-          VARS.$tc.details = {
-            id : tc.id,
-            externalId : tc.getTc('externalId',true),
-            summary : tc.getTc('summary')
-          };
-          VARS.$tc.request = {
-            url : tc.getTc('url'), method : tc.getTc('method'),
-            params : tc.getTc('params'), headers : tc.getTc('headers')
-          };
-          if(VARS.$tc.request.method !== 'GET'){
-            VARS.$tc.request.rawBody = tc.getTc('raw').content;
-          }
+        VARS.$tc.details = {
+          id : tc.id,
+          externalId : tc.getTc('externalId',true),
+          summary : tc.getTc('summary'),
+          loopIndex : trtc.loopIndex
+        };
+        VARS.$tc.request = {
+          url : tc.getTc('url'), method : tc.getTc('method'),
+          params : tc.getTc('params'), headers : tc.getTc('headers')
+        };
+        if(VARS.$tc.request.method !== 'GET'){
+          VARS.$tc.request.rawBody = tc.getTc('raw').content;
         }
         try {
           var tcToExecute = tc.getTcToExecute();
@@ -1032,7 +1034,7 @@ var findExAndAc = function(headersMap, ass, actualResults, executionTime){
         setActual : (typeof actualResults.parsedContent === 'object') ?
                   (config.meta.copyFromActual+'json') : false
       };
-    case 'default' :
+    default :
       return {};
   }
 };
