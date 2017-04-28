@@ -661,8 +661,11 @@ var forOneTc = function(report,tc,cb0){
     if(!trtc.remarks) trtc.remarks = remarks;
     VARS.$tc.execution = {
       request : _.extend({},trtc.runnerCase),
-      response : { headers : util.stringify(result.headers), body : result.body },
-      statusCode : result.statusCode || 0
+      response : {
+        headers : util.stringify((result && result.headers) || {}),
+        body : (result && result.body) || ''
+      },
+      statusCode : (result && result.statusCode) || 0
     };
     try {
       VARS.$tc.execution.request.headers = util.stringify(VARS.$tc.execution.request.headers)
