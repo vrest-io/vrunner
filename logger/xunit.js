@@ -54,7 +54,7 @@ module.exports = function(args){
       data.$.message = 'NOT_EXECUTED';
       if(trtc.remarks) data.error = trtc.remarks;
     }
-    if(!Array.isArray(tsResultsMap[tc.testSuiteId])){
+    if(!tsResultsMap[tc.testSuiteId]){
       tsResultsMap[tc.testSuiteId] = {
         "$" : {
           name : testSuitesMap[tc.testSuiteId] || tc.testSuiteId,
@@ -67,7 +67,7 @@ module.exports = function(args){
       };
     } else {
       tsResultsMap[tc.testSuiteId].testcase.push(data);
-      tsResultsMap[tc.testSuiteId][incIn]++;
+      tsResultsMap[tc.testSuiteId].$[incIn]++;
     }
   };
   args.errorLogger = function(log){
