@@ -663,9 +663,11 @@ var forOneTc = function(report,tc,cb0){
     VARS.$tc.execution = {
       request : _.extend({},trtc.runnerCase),
       response : {
-        headers : util.stringify((result && result.headers) || {}),
+        headers : util.stringify((result && result.headers) || {},false,true),
         body : (result && result.body) || ''
       },
+      executionTime : trtc.executionTime,
+      remarks : trtc.remarks,
       statusCode : (result && result.statusCode) || 0
     };
     try {
@@ -703,6 +705,7 @@ var forOneTc = function(report,tc,cb0){
           id : tc.id,
           externalId : tc.getTc('externalId',true),
           summary : tc.getTc('summary'),
+          position : trtc.position,
           loopIndex : trtc.loopIndex
         };
         VARS.$tc.request = {
@@ -833,6 +836,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     PSTR_HOOK_RUNNER.currTcIndex = -1;
     VARS.$tr.details = {
       id : vrunner.testRunId,
+      createdAt : vrunner.testRunCreatedAt,
       name : vrunner.testRunName,
       executor : { name : vrunner.userFullName, email : vrunner.credentials.email }
     };
@@ -1556,6 +1560,7 @@ vRunner.prototype.run = function(next){
           console.log('INFO => Test run name : '+testrun.name);
           self.testRunName = testrun.name;
           self.testRunId = testrun.id;
+          self.testRunCreatedAt = String(testrun.createdAt);
           self.emit('testrun',testrun);
           cb();
         }
