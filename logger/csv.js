@@ -1,7 +1,7 @@
 'use strict';
 
 var common = require('./common'), util = require('./../lib/util'), fs = require('fs'),
-    mainString = ['"Test Case Id","Summary","Method","Position","Iteration","URL","Status Code","Executed ?","Passed ?","Response Time (ms)","Remarks"'];
+    mainString = ['"Test Case Id","Summary","Position","Iteration","Method","URL","Status Code","Executed ?","Passed ?","Response Time (ms)","Remarks"'];
 
 var replaceDouble = function(st){
   return '"'+String(st).replace(/\"/g, '""')+'"';
