@@ -1560,7 +1560,7 @@ vRunner.prototype.run = function(next){
           console.log('INFO => Test run name : '+testrun.name);
           self.testRunName = testrun.name;
           self.testRunId = testrun.id;
-          self.testRunCreatedAt = String(test.createdAt);
+          self.testRunCreatedAt = String(testrun.createdAt);
           self.emit('testrun',testrun);
           cb();
         }
