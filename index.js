@@ -466,6 +466,7 @@ RunnerModel.prototype = {
     var authId = this.getTc('authorizationId');
     if(authId){
       ret.authorizationHeader = resolveAuthorization(authId);
+      ret.authTokens = getOAuth1Tokens(authId);
     }
     this.lastSend = ret;
     return ret;
@@ -717,6 +718,8 @@ var forOneTc = function(report,tc,cb0){
           console.log(err);
           return handleAPIResponse(null, err.message || err);
         }
+        VARS.$tc.authorization = tcToExecute.authTokens;
+        delete tcToExecute.authTokens;
         fireRequest(tcToExecute,trtc, self.timeout, function(result){
           handleAPIResponse(result.response, result.err);
         });
@@ -899,6 +902,16 @@ var getAuthHeader = function(ath){
     return MAIN_AUTHORIZATIONS[authorizationId](tc);
   } else {
     return MAIN_AUTHORIZATIONS[authorizationId];
+  }
+}, getOAuth1Tokens = function(authorizationId){
+  var ac = resolveAuthorization(authorizationId);
+  if(ac) ac = ac.authConfig;
+  if(!ac) ac = {};
+  return {
+    consumer_key: ac.consumerKey || '',
+    consumer_secret: ac.consumerSecret || '',
+    token: ac.accessTokenKey || '',
+    token_secret: ac.accessTokenSecret || ''
   }
 };
 
