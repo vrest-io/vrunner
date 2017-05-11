@@ -1166,6 +1166,12 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
 exports.version = require('./package.json').version;
 exports.util = util;
 
+function fixFilePath(that,add){
+  if(!that.filePath) {
+    that.filePath = pathUtil.resolve('vrest_logs','logs') + '.' + add;
+  }
+}
+
 function vRunner(opts){
   console.log('INFO => vRUNNER version : '+exports.version);
   if(opts.vRESTBaseUrl){
@@ -1193,13 +1199,12 @@ function vRunner(opts){
     }
   }
   if(loggers.indexOf(this.logger) === -1)  throw new Error('vRunner : Please input a valid logger.');
-  if(this.logger !== 'console' && !this.filePath) {
-    this.filePath = pathUtil.resolve('vrest_logs','logs');
-    if(this.logger === 'json') this.filePath += '.json';
-    else if(this.logger === 'xunit') this.filePath += '.xml';
-    else if(this.logger === 'csv') this.filePath += '.csv';
+  switch(this.logger){
+    case 'xunit':fixFilePath(this,'xml');this.logger=require('./logger/xunit');break;
+    case 'csv':fixFilePath(this,this.logger);this.logger=require('./logger/csv');break;
+    case 'json':fixFilePath(this,this.logger);this.logger=require('./logger/json');break;
+    default:this.logger=require('./logger/console');break;
   }
-  this.logger = require('./logger/'+this.logger)({ runner : this });
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
   if(typeof this.url !== 'string' || !this.url) throw new Error('vRunner : URL to fetch test cases not found.');
