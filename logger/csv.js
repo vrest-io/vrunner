@@ -15,8 +15,8 @@ module.exports = function(args){
     var toPush = [];
     toPush.push(trtc.testCaseId);
     toPush.push(replaceDouble(tc.summary));
-    toPush.push(trtc.position);
-    toPush.push(trtc.loopIndex);
+    toPush.push(trtc.position || 0);
+    toPush.push(trtc.loopIndex || 0);
     toPush.push((trtc.runnerCase || tc).method);
     toPush.push(replaceDouble((trtc.runnerCase || tc).url));
     toPush.push((trtc.result && trtc.result.statusCode) || 0);
