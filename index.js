@@ -1200,10 +1200,10 @@ function vRunner(opts){
   }
   if(loggers.indexOf(this.logger) === -1)  throw new Error('vRunner : Please input a valid logger.');
   switch(this.logger){
-    case 'xunit':fixFilePath(this,'xml');this.logger=require('./logger/xunit');break;
-    case 'csv':fixFilePath(this,this.logger);this.logger=require('./logger/csv');break;
-    case 'json':fixFilePath(this,this.logger);this.logger=require('./logger/json');break;
-    default:this.logger=require('./logger/console');break;
+    case 'xunit':fixFilePath(this,'xml');require('./logger/xunit')({ runner:this });break;
+    case 'csv':fixFilePath(this,this.logger);require('./logger/csv')({ runner:this });break;
+    case 'json':fixFilePath(this,this.logger);require('./logger/json')({ runner:this });break;
+    default:require('./logger/console');break;
   }
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
