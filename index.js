@@ -1203,7 +1203,7 @@ function vRunner(opts){
     case 'xunit':fixFilePath(this,'xml');require('./logger/xunit')({ runner:this });break;
     case 'csv':fixFilePath(this,this.logger);require('./logger/csv')({ runner:this });break;
     case 'json':fixFilePath(this,this.logger);require('./logger/json')({ runner:this });break;
-    default:require('./logger/console');break;
+    default:require('./logger/console')({ runner:this });break;
   }
   error = util.validateObj(this.credentials, { email : { regex : EMAIL_REGEX }, password : 'string' });
   if(error) throw new Error('vRunner : INVALID_CREDENTIALS : ' + error);
