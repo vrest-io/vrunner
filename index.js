@@ -595,6 +595,7 @@ var forOneTc = function(report,tc,cb0){
     loopIndex : typeof self.loopIndex === 'number' ? self.loopIndex : VARS.$,
     tcIndex : typeof self.currTcIndex === 'number' ? self.currTcIndex : NO_OF_EXECUTED,
     testCaseId : tc.id,
+    position : tc.position,
     executionTime: 0
   };
   var over = function(){
