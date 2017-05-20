@@ -318,7 +318,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
       configureVarCol : function(varCol,opt){
         //varCol: global variable collection
-        ReplaceModule.clearVars();
+        if(!(opt.dontClear)) ReplaceModule.clearVars();
         var key, vlu, tmp, typ;
         for(var z=0, v = null, len = varCol.length;z<len;z++){
           v = varCol[z];
@@ -1553,7 +1553,10 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment });
+          processUtil.configureVarCol(vars, {});
+          if(self.selectedEnvironment){
+            processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment, dontClear : true });
+          }
           cb();
         }
       });
