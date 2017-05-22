@@ -595,7 +595,7 @@ var forOneTc = function(report,tc,cb0){
     loopIndex : typeof self.loopIndex === 'number' ? self.loopIndex : VARS.$,
     tcIndex : typeof self.currTcIndex === 'number' ? self.currTcIndex : NO_OF_EXECUTED,
     testCaseId : tc.id,
-    position : tc.position,
+    position : tc.position || 0,
     executionTime: 0
   };
   var over = function(){
@@ -785,6 +785,10 @@ HookRunner.prototype.sendToServer = function(trtc){
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
+    if(this.currTcIndex === undefined){
+      PRE_HOOK_RUNNER.sendToServer('OVER');
+      POST_HOOK_RUNNER.sendToServer('OVER');
+    }
   } else if(typeof trtc === 'number' && trtc && this.stopped){
     sendNow(trtc);
   } else if(typeof trtc === 'object' && trtc) {
@@ -804,14 +808,18 @@ var PRE_HOOK_RUNNER, POST_HOOK_RUNNER, PRTR_HOOK_RUNNER, PSTR_HOOK_RUNNER;
 
 var callOneQ = function(withRunner,qu,after,ind){
   if(!ind) ind = 0;
-  if(!(Array.isArray(qu)) || ind === qu.length || !(qu[ind])) {
+  if(!(Array.isArray(qu)) || !(qu.length) || ((withRunner.currTcIndex < 0) && (ind === qu.length || !(qu[ind])))){
     withRunner.sendToServer('OVER');
     return after();
   }
-  withRunner.forOneTc(withRunner.report,qu[ind],function(){
-    withRunner.loopIndex++;
-    callOneQ(withRunner,qu,after,ind+1);
-  });
+  if(qu[ind]){
+    withRunner.forOneTc(withRunner.report,qu[ind],function(){
+      withRunner.loopIndex++;
+      callOneQ(withRunner,qu,after,ind+1);
+    });
+  } else {
+    after();
+  }
 };
 
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
@@ -820,21 +828,22 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     res.output.forEach(function(abs){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
       abs.canHook = false;
-      if(abs.flowIndex === 0){
+      if(abs.testSuiteId === 0){
         PRTR_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 1){
+      } else if(abs.testSuiteId === 1){
         PRE_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 2){
+      } else if(abs.testSuiteId === 2){
         POST_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 3){
+      } else if(abs.testSuiteId === 3){
         PSTR_HOOK_COL.push(abs);
       }
     });
     PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PRTR_HOOK_RUNNER.currTcIndex = -1;
     PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
-    PSTR_HOOK_RUNNER.currTcIndex = -1;
+    PSTR_HOOK_RUNNER.currTcIndex = -2;
     VARS.$tr.details = {
       id : vrunner.testRunId,
       createdAt : vrunner.testRunCreatedAt,
@@ -1411,7 +1420,6 @@ vRunner.prototype.afterComplete = function(report){
   };
   this.emit('after-post-run',VARS.$tr);
   if(PSTR_HOOK_RUNNER){
-    PSTR_HOOK_RUNNER.currTcIndex = -2;
     callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
   }
 };
