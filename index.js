@@ -343,7 +343,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
       isConditionPassed : function(mk,def){
         var evl;
-        if(def !== false) def = true;
+        if(def !== true) def = false;
         if(typeof mk === 'string'){
           if(!(mk.length)){
             return def;
@@ -351,7 +351,7 @@ var request = require('request').defaults({jar: true, json: true}),
           try {
             evl = eval(mk);
           } catch(er){
-            return def;
+            return 'INVALID_CONDITION:'+(er.message||'');
           }
         } else if(mk !== undefined && mk !== null){
           evl = mk;
@@ -699,7 +699,8 @@ var forOneTc = function(report,tc,cb0){
     forNotRunnable();
   } else {
     processUtil.extractPathVars(tc.params);
-    if(tc.shouldRun()){
+    var shouldRunVal = tc.shouldRun();
+    if(shouldRunVal === true){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
         VARS.$tc.details = {
@@ -732,7 +733,7 @@ var forOneTc = function(report,tc,cb0){
       if(wf) setTimeout(afterWait, wf*1000);
       else afterWait();
     } else {
-      forNotRunnable(tc.currentCondition);
+      forNotRunnable(shouldRunVal || tc.currentCondition);
     }
   }
 };
@@ -1293,7 +1294,7 @@ var shouldLoop = function(lp, noUpdate){
       lp.maxCount = nm;
     }
     if(lp.maxCount === false) {
-      if(processUtil.isConditionPassed(src, false) === true) {
+      if(processUtil.isConditionPassed(src) === true) {
         return inLimits;
       } else {
         lp.maxCount = 0;
