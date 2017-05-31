@@ -343,7 +343,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
       isConditionPassed : function(mk,def){
         var evl;
-        if(def !== true) def = false;
+        if(def !== false) def = true;
         if(typeof mk === 'string'){
           if(!(mk.length)){
             return def;
@@ -1294,7 +1294,7 @@ var shouldLoop = function(lp, noUpdate){
       lp.maxCount = nm;
     }
     if(lp.maxCount === false) {
-      if(processUtil.isConditionPassed(src) === true) {
+      if(processUtil.isConditionPassed(src,true) === true) {
         return inLimits;
       } else {
         lp.maxCount = 0;
