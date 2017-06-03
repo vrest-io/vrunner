@@ -351,7 +351,7 @@ var request = require('request').defaults({jar: true, json: true}),
           try {
             evl = eval(mk);
           } catch(er){
-            return 'INVALID_CONDITION:'+(er.message||'');
+            return 'INVALID_CONDITION`'+mk+'`:'+(er.message||'');
           }
         } else if(mk !== undefined && mk !== null){
           evl = mk;
