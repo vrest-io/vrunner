@@ -1294,7 +1294,7 @@ var shouldLoop = function(lp, noUpdate){
       lp.maxCount = nm;
     }
     if(lp.maxCount === false) {
-      if(processUtil.isConditionPassed(src,true) === true) {
+      if(processUtil.isConditionPassed(src,false) === true) {
         return inLimits;
       } else {
         lp.maxCount = 0;
