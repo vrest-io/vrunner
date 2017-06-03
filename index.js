@@ -774,7 +774,7 @@ HookRunner.prototype.sendToServer = function(trtc){
     self.pendingTrtc = [];
     var lastOp = function(err,res,body){
       SAVING_RESULTS--;
-      var ster = res.statusCode !== 200;
+      var ster = (res && res.statusCode) !== 200;
       if(err || !body || body.error || ster) {
         self.emit('warning',
           util.stringify(err||body||ster ? 'Result could not be saved due to some unknown error.'
