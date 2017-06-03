@@ -318,7 +318,7 @@ var request = require('request').defaults({jar: true, json: true}),
 
       configureVarCol : function(varCol,opt){
         //varCol: global variable collection
-        ReplaceModule.clearVars();
+        if(!(opt.dontClear)) ReplaceModule.clearVars();
         var key, vlu, tmp, typ;
         for(var z=0, v = null, len = varCol.length;z<len;z++){
           v = varCol[z];
@@ -351,7 +351,7 @@ var request = require('request').defaults({jar: true, json: true}),
           try {
             evl = eval(mk);
           } catch(er){
-            return def;
+            return 'INVALID_CONDITION`'+mk+'`:'+(er.message||'');
           }
         } else if(mk !== undefined && mk !== null){
           evl = mk;
@@ -595,7 +595,7 @@ var forOneTc = function(report,tc,cb0){
     loopIndex : typeof self.loopIndex === 'number' ? self.loopIndex : VARS.$,
     tcIndex : typeof self.currTcIndex === 'number' ? self.currTcIndex : NO_OF_EXECUTED,
     testCaseId : tc.id,
-    position : tc.position,
+    position : tc.position || 0,
     executionTime: 0
   };
   var over = function(){
@@ -699,7 +699,8 @@ var forOneTc = function(report,tc,cb0){
     forNotRunnable();
   } else {
     processUtil.extractPathVars(tc.params);
-    if(tc.shouldRun()){
+    var shouldRunVal = tc.shouldRun();
+    if(shouldRunVal === true){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
         VARS.$tc.details = {
@@ -732,7 +733,7 @@ var forOneTc = function(report,tc,cb0){
       if(wf) setTimeout(afterWait, wf*1000);
       else afterWait();
     } else {
-      forNotRunnable(tc.currentCondition);
+      forNotRunnable(shouldRunVal || tc.currentCondition);
     }
   }
 };
@@ -785,6 +786,10 @@ HookRunner.prototype.sendToServer = function(trtc){
   };
   if(trtc === 'OVER'){
     if(this.pendingTrtc.length) sendNow();
+    if(this.currTcIndex === undefined){
+      PRE_HOOK_RUNNER.sendToServer('OVER');
+      POST_HOOK_RUNNER.sendToServer('OVER');
+    }
   } else if(typeof trtc === 'number' && trtc && this.stopped){
     sendNow(trtc);
   } else if(typeof trtc === 'object' && trtc) {
@@ -804,14 +809,18 @@ var PRE_HOOK_RUNNER, POST_HOOK_RUNNER, PRTR_HOOK_RUNNER, PSTR_HOOK_RUNNER;
 
 var callOneQ = function(withRunner,qu,after,ind){
   if(!ind) ind = 0;
-  if(!(Array.isArray(qu)) || ind === qu.length || !(qu[ind])) {
+  if(!(Array.isArray(qu)) || !(qu.length) || ((withRunner.currTcIndex < 0) && (ind === qu.length || !(qu[ind])))){
     withRunner.sendToServer('OVER');
     return after();
   }
-  withRunner.forOneTc(withRunner.report,qu[ind],function(){
-    withRunner.loopIndex++;
-    callOneQ(withRunner,qu,after,ind+1);
-  });
+  if(qu[ind]){
+    withRunner.forOneTc(withRunner.report,qu[ind],function(){
+      withRunner.loopIndex++;
+      callOneQ(withRunner,qu,after,ind+1);
+    });
+  } else {
+    after();
+  }
 };
 
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
@@ -820,21 +829,22 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
     res.output.forEach(function(abs){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
       abs.canHook = false;
-      if(abs.flowIndex === 0){
+      if(abs.testSuiteId === 0){
         PRTR_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 1){
+      } else if(abs.testSuiteId === 1){
         PRE_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 2){
+      } else if(abs.testSuiteId === 2){
         POST_HOOK_COL.push(abs);
-      } else if(abs.flowIndex === 3){
+      } else if(abs.testSuiteId === 3){
         PSTR_HOOK_COL.push(abs);
       }
     });
     PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
     PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PRTR_HOOK_RUNNER.currTcIndex = -1;
     PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
-    PSTR_HOOK_RUNNER.currTcIndex = -1;
+    PSTR_HOOK_RUNNER.currTcIndex = -2;
     VARS.$tr.details = {
       id : vrunner.testRunId,
       createdAt : vrunner.testRunCreatedAt,
@@ -1284,7 +1294,7 @@ var shouldLoop = function(lp, noUpdate){
       lp.maxCount = nm;
     }
     if(lp.maxCount === false) {
-      if(processUtil.isConditionPassed(src, false) === true) {
+      if(processUtil.isConditionPassed(src,false) === true) {
         return inLimits;
       } else {
         lp.maxCount = 0;
@@ -1411,7 +1421,6 @@ vRunner.prototype.afterComplete = function(report){
   };
   this.emit('after-post-run',VARS.$tr);
   if(PSTR_HOOK_RUNNER){
-    PSTR_HOOK_RUNNER.currTcIndex = -2;
     callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
   }
 };
@@ -1553,7 +1562,10 @@ vRunner.prototype.run = function(next){
       findHelpers(self, 'variable', function(err,vars){
         if(err) cb(err, 'VRUN_OVER');
         else {
-          processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment });
+          processUtil.configureVarCol(vars, {});
+          if(self.selectedEnvironment){
+            processUtil.configureVarCol(vars, { selectedEnvironment : self.selectedEnvironment, dontClear : true });
+          }
           cb();
         }
       });
