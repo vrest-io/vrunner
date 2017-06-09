@@ -703,6 +703,7 @@ var forOneTc = function(report,tc,cb0){
     if(shouldRunVal === true){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
+        if(self.stopped) { return forNotRunnable(); }
         VARS.$tc.details = {
           id : tc.id,
           externalId : tc.getTc('externalId',true),
@@ -1079,7 +1080,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
-  runnerModel.expectedContent = toSendTC.expectedResults.content;
+  runnerModel.expectedResults = toSendTC.expectedResults;
 };
 
 
