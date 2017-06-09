@@ -826,9 +826,10 @@ var callOneQ = function(withRunner,qu,after,ind){
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
   request(vrunner.instanceURL+'/g/testhook?currentPage=0&pageSize=100&projectId='+vrunner.projectId, function(err,bod,res){
     if(err || !res || res.error) return next(['Error while fetching hooks :', err||res], 'VRUN_OVER');
-    res.output.forEach(function(abs){
+    res.output.forEach(function(abs,pos){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
       abs.canHook = false;
+      abs.position = pos;
       if(abs.testSuiteId === 0){
         PRTR_HOOK_COL.push(abs);
       } else if(abs.testSuiteId === 1){
@@ -1373,7 +1374,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
       else self.emit('end',null, body.output.statistics, body.output.remarks);
     };
-    setInterval(checkExit, 500);
+    setInterval(checkExit, 1000);
   });
 };
 
