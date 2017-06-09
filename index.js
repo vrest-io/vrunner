@@ -799,6 +799,9 @@ HookRunner.prototype.sendToServer = function(trtc){
       if(trtc.hasOwnProperty(op[nm])){
         delete trtc[op[nm]].parsedContent;
         delete trtc[op[nm]]._parsedContent;
+        if(typeof trtc[op[nm]].contentSchema === 'object'){
+           trtc[op[nm]].contentSchema = JSON.stringify(trtc[op[nm]].contentSchema);
+        }
       }
     }
     this.pendingTrtc.push(trtc);
