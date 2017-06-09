@@ -703,6 +703,7 @@ var forOneTc = function(report,tc,cb0){
     if(shouldRunVal === true){
       trtc.executionTime = new Date().getTime();
       var afterWait = function(){
+        if(self.stopped) { return forNotRunnable(); }
         VARS.$tc.details = {
           id : tc.id,
           externalId : tc.getTc('externalId',true),
@@ -798,6 +799,9 @@ HookRunner.prototype.sendToServer = function(trtc){
       if(trtc.hasOwnProperty(op[nm])){
         delete trtc[op[nm]].parsedContent;
         delete trtc[op[nm]]._parsedContent;
+        if(typeof trtc[op[nm]].contentSchema === 'object'){
+           trtc[op[nm]].contentSchema = JSON.stringify(trtc[op[nm]].contentSchema);
+        }
       }
     }
     this.pendingTrtc.push(trtc);
@@ -826,9 +830,10 @@ var callOneQ = function(withRunner,qu,after,ind){
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
   request(vrunner.instanceURL+'/g/testhook?currentPage=0&pageSize=100&projectId='+vrunner.projectId, function(err,bod,res){
     if(err || !res || res.error) return next(['Error while fetching hooks :', err||res], 'VRUN_OVER');
-    res.output.forEach(function(abs){
+    res.output.forEach(function(abs,pos){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
       abs.canHook = false;
+      abs.position = pos;
       if(abs.testSuiteId === 0){
         PRTR_HOOK_COL.push(abs);
       } else if(abs.testSuiteId === 1){
@@ -1078,7 +1083,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
   applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
-  runnerModel.expectedContent = toSendTC.expectedResults.content;
+  runnerModel.expectedResults = toSendTC.expectedResults;
 };
 
 
@@ -1373,7 +1378,7 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
       else if(err || !body || body.error) self.emit('end',['Error while saving report : ', err||body]);
       else self.emit('end',null, body.output.statistics, body.output.remarks);
     };
-    setInterval(checkExit, 500);
+    setInterval(checkExit, 1000);
   });
 };
 
