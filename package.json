@@ -26,9 +26,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "bin": {
-    "vrunner": "bin/run.js"
-  },
+  "bin": "bin/run.js",
   "dependencies": {
     "request": "2.55.0",
     "z-schema": "3.10.2",
