@@ -465,8 +465,8 @@ RunnerModel.prototype = {
     ret.url = processUtil.completeURL(ret.url, ret.params);
     var authId = this.getTc('authorizationId');
     if(authId){
-      ret.authorizationHeader = resolveAuthorization(authId);
-      ret.authTokens = getOAuth1Tokens(authId);
+      ret.authorizationHeader = resolveAuthorization(authId,ret);
+      ret.authTokens = getOAuth1Tokens(authId,ret);
     }
     this.lastSend = ret;
     return ret;
@@ -917,14 +917,14 @@ var getAuthHeader = function(ath){
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
   }
-}, resolveAuthorization = function(authorizationId){
+}, resolveAuthorization = function(authorizationId,ret){
   if(typeof MAIN_AUTHORIZATIONS[authorizationId] === 'function'){
-    return MAIN_AUTHORIZATIONS[authorizationId](tc);
+    return MAIN_AUTHORIZATIONS[authorizationId](ret);
   } else {
     return MAIN_AUTHORIZATIONS[authorizationId];
   }
-}, getOAuth1Tokens = function(authorizationId){
-  var ac = resolveAuthorization(authorizationId);
+}, getOAuth1Tokens = function(authorizationId,ret){
+  var ac = resolveAuthorization(authorizationId,ret);
   if(ac) ac = ac.authConfig;
   if(!ac) ac = {};
   return {
