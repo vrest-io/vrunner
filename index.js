@@ -1522,6 +1522,7 @@ vRunner.prototype.run = function(next){
           funcVars.validateJSONSchema = function(av,bv){
             if(ifDraft03(bv)){
               var result = sk.draft03Validator(av,bv);
+              if(!result) return false;
               bv.vrest_schemaErrors = result.errors || [];
               return result.valid;
             } else {
