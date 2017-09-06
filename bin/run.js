@@ -40,6 +40,11 @@ opts.forEach(function(arg){
     case '--debug':
       options.debugging = (value === 'true');
       break;
+    case '-r':
+    case '--port':
+      options.port = Number(value);
+      if (isNaN(options.port)) { delete options.port; }
+      break;
     case '-t':
     case '--timeout':
       options.timeout = value;
@@ -83,6 +88,8 @@ if(showHelp){
   console.log('                       e.g. -T=3 will wait for 3 seconds for response');
   console.log('    -N, --env        : Provide the environment name to initialize the global variables.');
   console.log('                       By default environment `Default` is used.');
+  console.log('    -R, --port       : If provided, vrunner will start a server as web hook.');
+  console.log('                       You may use web hook as <vrunner_url>/execute.');
   console.log('    -D, --debug      : Should be set if you want debugging console logs.');
   console.log('                       By default debugging information are not logged.');
   console.log('    -S, --nosslcheck : If this argument is `true`, vRUNNER will process all requests, without Secure Certificate Check.');
@@ -98,5 +105,25 @@ if(showHelp){
   console.log('    -H, --help       : To see this help.');
   process.exit();
 } else {
-  (new (require('./../index'))(options)).run();
+  if (options.port) {
+    var http = require('http');
+    var util = require('../lib/util');
+    var mainUrl = require('url');
+
+    var requestHandler = function(request, response) {
+      if(request.url === '/request') {
+        (new (require('./../index'))(util.extend({ exitOnDone: false }, options, mainUrl.parse(req.url, true).query))).run();
+      }
+    };
+
+    var server = require('http').createServer(requestHandler);
+    server.listen(options.port, function(err) {
+      if (err) {
+        return console.log('something bad happened', err)
+      }
+      console.log('server is listening on '+options.port);
+    });
+  } else {
+    (new (require('./../index'))(options)).run();
+  }
 }
