@@ -42,7 +42,10 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
     NO_OF_EXECUTED = 0,
     PRTR_HOOK_COL = [],
     PSTR_HOOK_COL = [],
-    _ = { extend: util.extend.bind(util) },
+    _ = {
+      extend: util.extend.bind(util),
+      isEmpty: util.isEmpty.bind(util)
+    },
     LOOPS = [],
     JSONSchemasRefs = [],
     options = {
@@ -1147,7 +1150,7 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
       var now = false;
       if(isValAss(ass)) {
         if(util.getModelVal(ass, 'type') === config.meta.schemaValidatorId) {
-          self.findAndCacheTheSchemas();
+          findAndCacheTheSchemas();
         };
         var erm = tc.expectedResults;
         if(!(erm.hasOwnProperty('parsedContent'))){
