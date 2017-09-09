@@ -50,7 +50,10 @@ module.exports = function(args){
         data.failure = 'API Endpoint: ' + tc.url+ (tc.summary ? ('\nSummary: ' +tc.summary) : '')+'\nDetailed Info : '+
               getDescUrl(args.runner,trtc.testRunId,tc.id)+(trtc.remarks ? ('\nRemarks : '+trtc.remarks) : '');
       }
-    } else {
+    } else if(!tc.runnable) { //if tc is not runnable
+      data.skipped = {};
+      data.$.message = 'NOT_EXECUTED';
+    } else { //if tc was not executed due to some other reasons
       data.$.message = 'NOT_EXECUTED';
       if(trtc.remarks) data.error = trtc.remarks;
     }

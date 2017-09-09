@@ -8,7 +8,7 @@
 
 'use strict';
 
-var request = require('request').defaults({ jar: true, json: true, headers: { 'x-requested-by': 'vrunner' } }),
+var request = require('request').defaults({ jar: true, json: true, headers: { 'x-vrest-request-source': 'vrunner' } }),
     zSchemaValidator = require('z-schema'),
     events = require('events'),
     jsonSchemaFiles = require('./lib/schemaFiles'),
