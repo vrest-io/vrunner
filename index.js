@@ -1530,6 +1530,7 @@ vRunner.prototype.run = function(next){
           ZSV.setRemoteReference('http://json-schema.org/draft-04/schema#', sk.draft04ValidatorFile);
           var ifDraft03 = function(bv){ return (bv.$schema && bv.$schema.indexOf('draft-03') !== -1); };
           funcVars.validateJSONSchema = function(av,bv){
+            delete bv.id;
             if(!(_.isEmpty(JSONSchemasRefs))) {
               bv.definitions = _.extend({},JSONSchemasRefs,bv.definitions);
             }
