@@ -8,7 +8,7 @@
 
 'use strict';
 
-var request = require('request').defaults({jar: true, json: true}),
+var request = require('request').defaults({ jar: true, json: true, headers: { 'x-vrest-request-source': 'vrunner' } }),
     zSchemaValidator = require('z-schema'),
     events = require('events'),
     jsonSchemaFiles = require('./lib/schemaFiles'),
@@ -42,24 +42,9 @@ var request = require('request').defaults({jar: true, json: true}),
     NO_OF_EXECUTED = 0,
     PRTR_HOOK_COL = [],
     PSTR_HOOK_COL = [],
-    _ = {
-      extend : function(target) {
-        if (target == null) { target = {}; }
-        target = Object(target);
-        for (var index = 1; index < arguments.length; index++) {
-          var source = arguments[index];
-          if (source != null) {
-            for (var key in source) {
-              if (Object.prototype.hasOwnProperty.call(source, key)) {
-                target[key] = source[key];
-              }
-            }
-          }
-        }
-        return target;
-      }
-    },
+    _ = { extend: util.extend.bind(util) },
     LOOPS = [],
+    JSONSchemasRefs = [],
     options = {
       credentials : {},
       logger : 'console',
@@ -1161,6 +1146,9 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
+        if(util.getModelVal(ass, 'type') === config.meta.schemaValidatorId) {
+          self.findAndCacheTheSchemas();
+        };
         var erm = tc.expectedResults;
         if(!(erm.hasOwnProperty('parsedContent'))){
           initForVal(runnerModel, applyToValidator, tc);
@@ -1382,6 +1370,19 @@ vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   });
 };
 
+var findAndCacheTheSchemas = function(){
+  if(Array.isArray(JSONSchemasRefs)) {
+    var schemaMap = {};
+    JSONSchemasRefs.forEach(function(sch) {
+      try {
+        schemaMap[util.getModelVal(sch, 'name')] = JSON.parse(util.getModelVal(sch, 'content'));
+      } catch (er) {
+      }
+    });
+    JSONSchemasRefs = schemaMap;
+  }
+};
+
 vRunner.prototype.kill = function(){
   var self = this;
   self.sendToServer('OVER');
@@ -1393,7 +1394,7 @@ vRunner.prototype.kill = function(){
   }, function(err){
     if(err) self.emit('warning',err);
     self.emit('log',"\nTest Run Stopped.");
-    process.exit(1);
+    if(self.exitOnDone) { process.exit(1); }
   }, true);
 };
 
@@ -1500,6 +1501,15 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
+      findHelpers(self, 'jsonschema', function(err,jss){
+        if(err) cb(err, 'VRUN_OVER');
+        else {
+          JSONSchemasRefs = jss;
+          cb();
+        }
+      });
+    },
+    function(cb){
       findHelpers(self, 'responsevalidator', function(err, vals){
         if(err) cb(err, 'VRUN_OVER');
         else {
@@ -1520,8 +1530,13 @@ vRunner.prototype.run = function(next){
           ZSV.setRemoteReference('http://json-schema.org/draft-04/schema#', sk.draft04ValidatorFile);
           var ifDraft03 = function(bv){ return (bv.$schema && bv.$schema.indexOf('draft-03') !== -1); };
           funcVars.validateJSONSchema = function(av,bv){
+            delete bv.id;
+            if(!(_.isEmpty(JSONSchemasRefs))) {
+              bv.definitions = _.extend({},JSONSchemasRefs,bv.definitions);
+            }
             if(ifDraft03(bv)){
               var result = sk.draft03Validator(av,bv);
+              if(!result) return false;
               bv.vrest_schemaErrors = result.errors || [];
               return result.valid;
             } else {
@@ -1554,7 +1569,7 @@ vRunner.prototype.run = function(next){
           if(!self.selectedEnvironment){
             if(self.projEnv && self.projEnv !== 'Default'){
               self.emit('error', 'Project environment "' + self.projEnv + '" not found.');
-              process.exit(1);
+              if(self.exitOnDone) { process.exit(1); }
             } else {
               self.selectedEnvironment = undefined;
             }
