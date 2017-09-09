@@ -89,7 +89,7 @@ if(showHelp){
   console.log('    -N, --env        : Provide the environment name to initialize the global variables.');
   console.log('                       By default environment `Default` is used.');
   console.log('    -R, --port       : If provided, vrunner will start a server as web hook.');
-  console.log('                       You may use web hook as <vrunner_url>/execute.');
+  console.log('                       You may use web hook as <vrunner_url>/request.');
   console.log('    -D, --debug      : Should be set if you want debugging console logs.');
   console.log('                       By default debugging information are not logged.');
   console.log('    -S, --nosslcheck : If this argument is `true`, vRUNNER will process all requests, without Secure Certificate Check.');
@@ -111,8 +111,10 @@ if(showHelp){
     var mainUrl = require('url');
 
     var requestHandler = function(request, response) {
-      if(request.url === '/request') {
-        (new (require('./../index'))(util.extend({ exitOnDone: false }, options, mainUrl.parse(req.url, true).query))).run();
+      var parsedObj = mainUrl.parse(request.url, true);
+      if(parsedObj.pathname === '/request') {
+        console.log("hello world");
+        (new (require('./../index'))(util.extend({ exitOnDone: false }, options, parsedObj.query))).run();
       }
     };
 
