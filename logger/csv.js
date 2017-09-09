@@ -36,7 +36,7 @@ module.exports = function(args){
   };
   args.reportsLogger = function(log){
   };
-  args.runner.on('done',function(){
+  args.runner.once('done',function(){
     util.writeToFile(args.runner.filePath, (mainString.join('\n')));
   });
   common(args);

@@ -33,38 +33,67 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
     END_VAR_EXPR = '}}',
     TRTC_BATCH = 5,
     MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
-    pages = [false],
-    MAIN_AUTHORIZATIONS = {},
-    SAVING_RESULTS = 0,
-    MAIN_COLLECTION = [],
-    PRE_HOOK_COL = [],
-    POST_HOOK_COL = [],
-    NO_OF_EXECUTED = 0,
-    PRTR_HOOK_COL = [],
-    PSTR_HOOK_COL = [],
     _ = {
       extend: util.extend.bind(util),
       isEmpty: util.isEmpty.bind(util)
     },
-    LOOPS = [],
-    JSONSchemasRefs = [],
-    options = {
-      credentials : {},
-      logger : 'console',
-      varColMap : {},
-      projEnv : undefined,
-      exitOnDone : true,
-      pageSize : 100,
-      authorizations : {},
-      validatorIdCodeMap : {}
-    },
-    config = {
-      invalidLpCond : 'V_INVALID_LOOP',
-      meta : publicConfiguration
-    };
+    pages,
+    MAIN_AUTHORIZATIONS,
+    SAVING_RESULTS,
+    MAIN_COLLECTION,
+    PRE_HOOK_COL,
+    POST_HOOK_COL,
+    NO_OF_EXECUTED,
+    PRTR_HOOK_COL,
+    PSTR_HOOK_COL,
+    LOOPS,
+    JSONSchemasRefs,
+    options,
+    replacingString,
+    VARS,
+    findHelpers,
+    config;
 
-    var replacingString = ReplaceModule.replace, VARS = ReplaceModule.getVars();
-    VARS.$ = 0;
+function initAll() {
+  pages = [false];
+  MAIN_AUTHORIZATIONS = {};
+  SAVING_RESULTS = 0;
+  MAIN_COLLECTION = [];
+  PRE_HOOK_COL = [];
+  POST_HOOK_COL = [];
+  NO_OF_EXECUTED = 0;
+  PRTR_HOOK_COL = [];
+  PSTR_HOOK_COL = [];
+  LOOPS = [];
+  JSONSchemasRefs = [];
+  options = {
+    credentials : {},
+    logger : 'console',
+    varColMap : {},
+    projEnv : undefined,
+    exitOnDone : true,
+    pageSize : 100,
+    authorizations : {},
+    validatorIdCodeMap : {}
+  };
+  config = {
+    invalidLpCond : 'V_INVALID_LOOP',
+    meta : publicConfiguration
+  };
+  replacingString = ReplaceModule.replace;
+  VARS = ReplaceModule.getVars();
+  VARS.$ = 0;
+  TotalRecords = 0;
+  findHelpers = function(prefetch, vrunner, what, next){
+    vrunner.emit('log', 'Finding '+what+'s ...');
+    if(what === 'publicConfiguration'){
+      if(typeof prefetch[what] !== 'object') prefetch[what] = {};
+    } else {
+      if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+    }
+    next(null,prefetch[what]);
+  };
+};
 
   var XML_EQUAL_SIGN = '{{*}}', XML_EQUAL_TO = '{{*}}';
 
@@ -200,7 +229,7 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
       else return ret;
     };
 
-    var TotalRecords = 0;
+    var TotalRecords;
 
     var findTcVarsName = function(what,which){
       var ar = what.tcVariables || [];
@@ -860,16 +889,6 @@ var hasRunPermission = function(instance, project, next){
   });
 };
 
-var findHelpers = function(prefetch, vrunner, what, next){
-  vrunner.emit('log', 'Finding '+what+'s ...');
-  if(what === 'publicConfiguration'){
-    if(typeof prefetch[what] !== 'object') prefetch[what] = {};
-  } else {
-    if(!Array.isArray(prefetch[what])) prefetch[what] = [];
-  }
-  next(null,prefetch[what]);
-};
-
 var createTestRun = function(instanceURL, filterData, next){
   var filters = filterData;
   filters.currentPage = 0;
@@ -1180,6 +1199,7 @@ function fixFilePath(that,add){
 }
 
 function vRunner(opts){
+  initAll();
   console.log('INFO => vRUNNER version : '+exports.version);
   if(opts.vRESTBaseUrl){
     V_BASE_URL = opts.vRESTBaseUrl;
@@ -1230,12 +1250,14 @@ function vRunner(opts){
   this.stopped = false;
   this.totalRecords = 0; this.noPassed = 0; this.noFailed =0; this.noNotExecuted = 0; this.notRunnable = 0;
   var self = this;
-  process.on( 'SIGINT', function() {
-    self.emit('log',"\nPlease wait, Stopping test case execution ...");
-    self.stopped = true;
-    self.kill();
-    runner.ABORT();
-  });
+  if(opts.exitOnDone !== false) {
+    process.on( 'SIGINT', function() {
+      self.emit('log',"\nPlease wait, Stopping test case execution ...");
+      self.stopped = true;
+      self.kill();
+      runner.ABORT();
+    });
+  }
 };
 
 var setupLoopAlgo = function(runModelIndex, noUpdate){
@@ -1305,7 +1327,7 @@ var shouldLoop = function(lp, noUpdate){
   }
 };
 
-vRunner.prototype = new events.EventEmitter;
+_.extend(vRunner.prototype, events.EventEmitter.prototype);
 
 vRunner.prototype.shouldLoop = shouldLoop;
 vRunner.prototype.setupLoopAlgo = setupLoopAlgo;
@@ -1397,7 +1419,8 @@ vRunner.prototype.kill = function(){
   }, function(err){
     if(err) self.emit('warning',err);
     self.emit('log',"\nTest Run Stopped.");
-    if(self.exitOnDone) { process.exit(1); }
+    if(self.exitOnDone) process.exit(1);
+    else self.emit('handle_the_exit', 1);
   }, true);
 };
 
@@ -1572,7 +1595,8 @@ vRunner.prototype.run = function(next){
           if(!self.selectedEnvironment){
             if(self.projEnv && self.projEnv !== 'Default'){
               self.emit('error', 'Project environment "' + self.projEnv + '" not found.');
-              if(self.exitOnDone) { process.exit(1); }
+              if(self.exitOnDone) process.exit(1);
+              else self.emit('handle_the_exit', 1);
             } else {
               self.selectedEnvironment = undefined;
             }

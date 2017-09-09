@@ -2,9 +2,9 @@
 
 var common = require('./common'), util = require('./../lib/util'), fs = require('fs');
 
-var mainFile = {}, tcs = [];
 
 module.exports = function(args){
+  var mainFile = {}, tcs = [];
   args.logger = function(log){
     console.log(log);
   };
@@ -35,7 +35,7 @@ module.exports = function(args){
   };
   args.reportsLogger = function(log){
   };
-  args.runner.on('done',function(){
+  args.runner.once('done',function(){
     util.writeToFile(args.runner.filePath, util.stringify(mainFile, '  '));
   });
   common(args);
