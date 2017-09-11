@@ -1,6 +1,6 @@
 'use strict';
 
-var chalk = require('chalk'), util = require('./../lib/util'), index = 1, rpad = function(str, totalSize, padChar){
+var chalk = require('chalk'), util = require('./../lib/util'), rpad = function(str, totalSize, padChar){
   if(!padChar) padChar = ' ';
   if(str.length >= totalSize) return str;
   else {
@@ -26,6 +26,7 @@ var chalk = require('chalk'), util = require('./../lib/util'), index = 1, rpad =
 }, done = function(runner,err){
   runner.emit('done',err);
   if(runner.exitOnDone) process.exit(err ? 1 : 0);
+  else runner.emit('handle_the_exit', err ? 1 : 0);
 }, getMethodName = function(method){
   if(method === "GET") return callChalk(['blue','bold'],method) + '    ';
   else if(method === "POST") return callChalk('bold',method) + '   ';
@@ -37,6 +38,7 @@ var chalk = require('chalk'), util = require('./../lib/util'), index = 1, rpad =
 
 module.exports = function(args){
   var Runner = args.runner;
+  var index = 1;
   if(Runner.logger !== 'console') callChalk = function(ar,str) { return str; };
   Runner.on('testcase', function(pass, tc, trtc){
     var prefix = rpad(index + '.', 5) + getMethodName(tc.method);
@@ -53,7 +55,7 @@ module.exports = function(args){
         ' (' + trtc.executionTime + 'ms) ', tc, trtc);
     }
   });
-  Runner.on('end',function(err, report, remarks){
+  Runner.once('end',function(err, report, remarks){
     if(err) over(args.errorLogger,Runner,err);
     else {
       args.remarksLogger(remarks);
@@ -65,7 +67,7 @@ module.exports = function(args){
       }
     }
   });
-  Runner.on('error', function(err){
+  Runner.once('error', function(err){
     args.logger('ERROR...!');
     over(args.errorLogger,Runner,err);
   });

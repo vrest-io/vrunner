@@ -113,8 +113,25 @@ if(showHelp){
     var requestHandler = function(request, response) {
       var parsedObj = mainUrl.parse(request.url, true);
       if(parsedObj.pathname === '/request') {
-        console.log("hello world");
-        (new (require('./../index'))(util.extend({ exitOnDone: false }, options, parsedObj.query))).run();
+        try {
+          var vrunner = (new (require('./../index'))(util.extend({ exitOnDone: false }, options, parsedObj.query)));
+        } catch (er) {
+          response.writeHead(400, { 'Content-Type': 'application/json' });
+          response.end('{"INIT_ERROR":"'+er.message+'"}');
+          return;
+        }
+        vrunner.run();
+        vrunner.once('testrun', function(trob) {
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({id:trob.id, name: trob.name}));
+        });
+        vrunner.once('handle_the_exit', function() {
+          vrunner.emit = function(){};
+          vrunner.removeAllListeners();
+        });
+      } else {
+        response.writeHead(404, { 'Content-Type': 'application/json' });
+        response.end('{"URL_NOT_FOUND":"Your url hook must start with `/request?<your_query_parameters>`"}');
       }
     };
 

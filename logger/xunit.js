@@ -87,7 +87,7 @@ module.exports = function(args){
     mainJson.testrun.$.failures = log.failed;
     mainJson.testrun.$.skipped = log.notExecuted + log.notRunnable;
   };
-  args.runner.on('done',function(){
+  args.runner.once('done',function(){
     for(var ky in tsResultsMap){
       mainJson.testrun.testsuite.push(tsResultsMap[ky]);
     }
