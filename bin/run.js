@@ -88,8 +88,8 @@ if(showHelp){
   console.log('                       e.g. -T=3 will wait for 3 seconds for response');
   console.log('    -N, --env        : Provide the environment name to initialize the global variables.');
   console.log('                       By default environment `Default` is used.');
-  console.log('    -R, --port       : If provided, vrunner will start a server as web hook.');
-  console.log('                       You may use web hook as <vrunner_url>/request.');
+  /*console.log('    -R, --port       : If provided, vrunner will start a server as web hook.');
+  console.log('                       You may use web hook as <vrunner_url>/request.');*/
   console.log('    -D, --debug      : Should be set if you want debugging console logs.');
   console.log('                       By default debugging information are not logged.');
   console.log('    -S, --nosslcheck : If this argument is `true`, vRUNNER will process all requests, without Secure Certificate Check.');

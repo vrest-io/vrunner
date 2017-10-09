@@ -1069,9 +1069,9 @@ var findExAndAc = function(headersMap, ass, actualResults, executionTime){
     case 'jsonBody' :
     case 'xmlBody' :
       return {
-        ac : getJSONPathValue(actualResults.parsedContent, ass.property,
+        ac : getJSONPathValue(actualResults._parsedContent, ass.property,
             ass.name === 'xmlBody' ? actualResults.resultType : false), ex : ass.value,
-        setActual : (typeof actualResults.parsedContent === 'object') ?
+        setActual : (typeof actualResults._parsedContent === 'object') ?
                   (config.meta.copyFromActual+'json') : false
       };
     default :
