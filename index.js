@@ -39,6 +39,7 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
     },
     pages,
     MAIN_AUTHORIZATIONS,
+    MAIN_AUTHS,
     SAVING_RESULTS,
     MAIN_COLLECTION,
     PRE_HOOK_COL,
@@ -57,6 +58,7 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
 function initAll() {
   pages = [false];
   MAIN_AUTHORIZATIONS = {};
+  MAIN_AUTHS = {};
   SAVING_RESULTS = 0;
   MAIN_COLLECTION = [];
   PRE_HOOK_COL = [];
@@ -258,7 +260,7 @@ function initAll() {
         }
         return ls;
       }
-    }, setStatusVar = function(vrs,exStatusAll,lpfl,vl){
+    }, setStatusVar = function(vrs, exStatusAll, lpfl, vl){
       var ls = { isRunnable : false, isExecuted : false, isPassed : false };
       if(typeof vl === 'number'){
         if(vl > 0){
@@ -470,7 +472,7 @@ RunnerModel.prototype = {
     delete this.exStatusLoop;
   },
 
-  getTcToExecute : function(){
+  getTcToExecute : function(runner, next){
     var ret = {
       method: this.getTc('method'),
       url : this.getTc('url',true),
@@ -481,12 +483,16 @@ RunnerModel.prototype = {
     };
     ret.url = processUtil.completeURL(ret.url, ret.params);
     var authId = this.getTc('authorizationId');
-    if(authId){
-      ret.authorizationHeader = resolveAuthorization(authId,ret);
-      ret.authTokens = getOAuth1Tokens(authId,ret);
-    }
     this.lastSend = ret;
-    return ret;
+    if(authId){
+      ret.authTokens = getOAuth1Tokens(runner, authId, ret);
+      resolveAuthorization(runner, authId, ret, function(err, header){
+        ret.authorizationHeader = header;
+        return next(err, ret);
+      });
+    } else {
+      return next(null, ret);
+    }
   },
 
   shouldRun : function(){
@@ -589,13 +595,32 @@ var afterFetch = function(st, en, cb, next, vrunner){
   forEachTc(st);
 };
 
-var oneTimeCache = function(vrunner,records,total){
+var oneTimeCache = function(vrunner, records, total){
   vrunner.emit("log", "Executing test cases ... (Please wait, it may take some time.)");
   vrunner.initAll(total);
   pages[0] = records;
 };
 
-var forOneTc = function(report,tc,cb0){
+var refreshToken = function(auth, cb){
+  var authConfig = auth.authConfig;
+  var url = this.instanceURL + '/oauth2/refreshToken/' + auth.id;
+  request({ method: 'POST', uri: url }, function(err, res, body){
+    if(err || !body || body.error) return cb(body && body.error || err);
+    else {
+      if(body.output && body.output.authConfig){
+        var ac = body.output.authConfig;
+        authConfig.accessToken = ac.accessToken;
+        authConfig.accessTokenType = ac.accessTokenType;
+        authConfig.expiresAt = ac.expiresAt;
+        authConfig.expiresIn = ac.expiresIn;
+        MAIN_AUTHORIZATIONS[auth.id] = getAuthHeader(auth);
+      }
+      return cb(null, body);
+    }
+  });
+};
+
+var forOneTc = function(report, tc, cb0){
   var self = this;
   tc.resetProps();
   tc.exStatusAll = findTcVarsName(tc,'trtc') || false;
@@ -671,7 +696,7 @@ var forOneTc = function(report,tc,cb0){
         trtc.result = actualResults;
         extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
         isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
-        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,isPassed ? 2 : 1);
+        setStatusVar(VARS, tc.exStatusAll, tc.exStatusLoop, isPassed ? 2 : 1);
       }
       isPassed = isPassed === true;
       trtc.isExecuted = isExecuted;
@@ -679,9 +704,9 @@ var forOneTc = function(report,tc,cb0){
     }
     if(!trtc.remarks) trtc.remarks = remarks;
     VARS.$tc.execution = {
-      request : _.extend({},trtc.runnerCase),
+      request : _.extend({}, trtc.runnerCase),
       response : {
-        headers : util.stringify((result && result.headers) || {},false,true),
+        headers : util.stringify((result && result.headers) || {}, false, true),
         body : (result && result.body) || ''
       },
       executionTime : trtc.executionTime,
@@ -719,6 +744,15 @@ var forOneTc = function(report,tc,cb0){
     var shouldRunVal = tc.shouldRun();
     if(shouldRunVal === true){
       trtc.executionTime = new Date().getTime();
+
+      var afterTCDetails = function(err, tcToExecute){
+        if(err) return handleAPIResponse(null, err.message || err);
+        VARS.$tc.authorization = tcToExecute.authTokens;
+        delete tcToExecute.authTokens;
+        fireRequest(tcToExecute,trtc, self.timeout, function(result){
+          handleAPIResponse(result.response, result.err);
+        });
+      };
       var afterWait = function(){
         if(self.stopped) { return forNotRunnable(); }
         VARS.$tc.details = {
@@ -736,16 +770,11 @@ var forOneTc = function(report,tc,cb0){
           VARS.$tc.request.rawBody = tc.getTc('raw').content;
         }
         try {
-          var tcToExecute = tc.getTcToExecute();
+          return tc.getTcToExecute(self, afterTCDetails);
         } catch(err){
           console.log(err);
           return handleAPIResponse(null, err.message || err);
         }
-        VARS.$tc.authorization = tcToExecute.authTokens;
-        delete tcToExecute.authTokens;
-        fireRequest(tcToExecute,trtc, self.timeout, function(result){
-          handleAPIResponse(result.response, result.err);
-        });
       };
       var wf = tc.getTc('waitFor');
       if(wf) setTimeout(afterWait, wf*1000);
@@ -756,7 +785,7 @@ var forOneTc = function(report,tc,cb0){
   }
 };
 
-function HookRunner(trId,instanceURL,validatorIdCodeMap,timeout){
+function HookRunner(trId, instanceURL, validatorIdCodeMap, timeout){
   this.testRunId = trId;
   this.noPassed = 0; this.noFailed = 0; this.noNotExecuted = 0; this.notRunnable = 0;
   this.report = { noPassed : this.noPassed, noFailed : this.noFailed,
@@ -776,6 +805,7 @@ function HookRunner(trId,instanceURL,validatorIdCodeMap,timeout){
 HookRunner.prototype.emit = function(){};
 
 HookRunner.prototype.forOneTc = forOneTc;
+HookRunner.prototype.refreshToken = refreshToken;
 
 HookRunner.prototype.sendToServer = function(trtc){
   var self = this;
@@ -828,7 +858,7 @@ HookRunner.prototype.sendToServer = function(trtc){
 
 var PRE_HOOK_RUNNER, POST_HOOK_RUNNER, PRTR_HOOK_RUNNER, PSTR_HOOK_RUNNER;
 
-var callOneQ = function(withRunner,qu,after,ind){
+var callOneQ = function(withRunner, qu, after, ind){
   if(!ind) ind = 0;
   if(!(Array.isArray(qu)) || !(qu.length) || ((withRunner.currTcIndex < 0) && (ind === qu.length || !(qu[ind])))){
     withRunner.sendToServer('OVER');
@@ -847,10 +877,10 @@ var callOneQ = function(withRunner,qu,after,ind){
 var fetchAndServe = function(url, pageSize, cb, next, vrunner){
   request(vrunner.instanceURL+'/g/testhook?currentPage=0&pageSize=100&projectId='+vrunner.projectId, function(err,bod,res){
     if(err || !res || res.error) return next(['Error while fetching hooks :', err||res], 'VRUN_OVER');
-    res.output.forEach(function(abs,pos){
+    res.output.forEach(function(abs, pos){
       var abs = new RunnerModel(processUtil.setupHeaderInTc(abs));
       abs.canHook = false;
-      abs.position = pos;
+      abs.position = abs.testSuiteId;
       if(abs.testSuiteId === 0){
         PRTR_HOOK_COL.push(abs);
       } else if(abs.testSuiteId === 1){
@@ -861,19 +891,19 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
         PSTR_HOOK_COL.push(abs);
       }
     });
-    PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
-    POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
-    PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PRE_HOOK_RUNNER = new HookRunner(vrunner.testRunId, vrunner.instanceURL, vrunner.validatorIdCodeMap, vrunner.timeout);
+    POST_HOOK_RUNNER = new HookRunner(vrunner.testRunId, vrunner.instanceURL, vrunner.validatorIdCodeMap, vrunner.timeout);
+    PRTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId, vrunner.instanceURL, vrunner.validatorIdCodeMap, vrunner.timeout);
     PRTR_HOOK_RUNNER.currTcIndex = -1;
-    PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId,vrunner.instanceURL, vrunner.validatorIdCodeMap,vrunner.timeout);
+    PSTR_HOOK_RUNNER = new HookRunner(vrunner.testRunId, vrunner.instanceURL, vrunner.validatorIdCodeMap, vrunner.timeout);
     PSTR_HOOK_RUNNER.currTcIndex = -2;
     VARS.$tr.details = {
       id : vrunner.testRunId,
       createdAt : vrunner.testRunCreatedAt,
       name : vrunner.testRunName,
-      executor : { name : vrunner.userFullName, email : vrunner.credentials.email }
+      executor : { name: vrunner.userFullName, email: vrunner.credentials.email }
     };
-    callOneQ(PRTR_HOOK_RUNNER,PRTR_HOOK_COL,function(){
+    callOneQ(PRTR_HOOK_RUNNER, PRTR_HOOK_COL,function(){
       fetchSinglePage(url, 0, pageSize, cb, next, vrunner);
     });
   });
@@ -924,14 +954,47 @@ var getAuthHeader = function(ath){
   } else if(authType === 'oauth2.0'){
     return getOAuthTwoHeader(ath);
   }
-}, resolveAuthorization = function(authorizationId,ret){
+}, shouldRefresh = function(expiresAt){
+  if(expiresAt){
+    expiresAt = new Date(expiresAt);
+    var EXPIRATION_WINDOW_IN_SECONDS = 300;
+    var expirationTimeInSeconds = expiresAt.getTime() / 1000;
+    var expirationWindowStart = expirationTimeInSeconds - EXPIRATION_WINDOW_IN_SECONDS;
+
+    // If the start of the window has passed, refresh the token
+    var nowInSeconds = (new Date()).getTime() / 1000;
+    return nowInSeconds >= expirationWindowStart;  
+  } else {
+    return false;
+  }
+}, resolveAuthorization = function(runner, authorizationId, ret, cb){
   if(typeof MAIN_AUTHORIZATIONS[authorizationId] === 'function'){
     return MAIN_AUTHORIZATIONS[authorizationId](ret);
   } else {
-    return MAIN_AUTHORIZATIONS[authorizationId];
+    var auth = MAIN_AUTHS[authorizationId];
+    if(auth && cb){
+      var authType = auth.authType,
+        authConfig = auth.authConfig;
+
+      if(authType === "oauth2.0"){
+        var refreshRequired = shouldRefresh(authConfig.expiresAt);
+        if(refreshRequired){
+          return runner.refreshToken(auth, function(err, result){
+            if(err){
+              console.log("Error while refreshing the access token", err);
+            }
+            //if error, still call cb on previously set access token
+            return cb(null, MAIN_AUTHORIZATIONS[authorizationId]);
+          });
+        }
+      }
+    }
+
+    if(cb) return cb(null, MAIN_AUTHORIZATIONS[authorizationId]);
+    else return MAIN_AUTHORIZATIONS[authorizationId];
   }
-}, getOAuth1Tokens = function(authorizationId,ret){
-  var ac = resolveAuthorization(authorizationId,ret);
+}, getOAuth1Tokens = function(runner, authorizationId, ret){
+  var ac = resolveAuthorization(runner, authorizationId, ret);
   if(ac) ac = ac.authConfig;
   if(!ac) ac = {};
   return {
@@ -1360,6 +1423,8 @@ vRunner.prototype.initAll = function(total){
 
 vRunner.prototype.forOneTc = forOneTc;
 
+vRunner.prototype.refreshToken = refreshToken;
+
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
   if(!stopped) stopped = this.stopped;
@@ -1453,7 +1518,7 @@ vRunner.prototype.afterComplete = function(report){
   };
   this.emit('after-post-run',VARS.$tr);
   if(PSTR_HOOK_RUNNER){
-    callOneQ(PSTR_HOOK_RUNNER,PSTR_HOOK_COL,function(){});
+    callOneQ(PSTR_HOOK_RUNNER, PSTR_HOOK_COL, function(){});
   }
 };
 
@@ -1471,7 +1536,7 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Checking permission to execute test cases in project ...');
-      hasRunPermission(self.instanceName,self.projectId,function(err,projectKey, prefetch, proju,usr){
+      hasRunPermission(self.instanceName, self.projectId, function(err, projectKey, prefetch, proju, usr){
         if(err) cb(err);
         else {
           self.userFullName = getFullName(usr);
@@ -1481,7 +1546,7 @@ vRunner.prototype.run = function(next){
             if(!(isNaN(to)) && to && to < RUNNER_LIMIT){ self.timeout = to; }
           }
           if(projectKey) self.projectKey = projectKey;
-          findHelpers = findHelpers.bind(undefined,prefetch || {});
+          findHelpers = findHelpers.bind(undefined, prefetch || {});
           cb();
         }
       });
@@ -1491,8 +1556,9 @@ vRunner.prototype.run = function(next){
         if(err) cb(err, 'VRUN_OVER');
         else {
           if(Array.isArray(auths)){
-            for(var k=0;k<auths.length;k++){
+            for(var k = 0; k < auths.length; k++){
               MAIN_AUTHORIZATIONS[auths[k].id] = getAuthHeader(auths[k]);
+              MAIN_AUTHS[auths[k].id] = auths[k];
             }
           }
           cb();
