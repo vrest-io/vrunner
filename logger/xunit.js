@@ -6,7 +6,7 @@ var common = require('./common'), util = require('./../lib/util'), xml2js = requ
     testSuitesMap = {},
     tsResultsMap = {},
     mainJson = {
-      testrun : {
+      testsuites : {
         '$': {
           name : 'vrest_run',
           timestamp : new Date().toGMTString()
@@ -28,8 +28,8 @@ module.exports = function(args){
     testSuitesMap = mp;
   });
   args.runner.once('testrun',function(mp){
-    mainJson.testrun.$.name = mp.name;
-    mainJson.testrun.$.id = mp.id;
+    mainJson.testsuites.$.name = mp.name;
+    mainJson.testsuites.$.id = mp.id;
   });
   args.testcaseLogger = function(log,tc,trtc){
     var data = {
@@ -83,13 +83,13 @@ module.exports = function(args){
     //mainJson.remarks = log;
   };
   args.reportsLogger = function(log){
-    mainJson.testrun.$.tests = log.total;
-    mainJson.testrun.$.failures = log.failed;
-    mainJson.testrun.$.skipped = log.notExecuted + log.notRunnable;
+    mainJson.testsuites.$.tests = log.total;
+    mainJson.testsuites.$.failures = log.failed;
+    mainJson.testsuites.$.skipped = log.notExecuted + log.notRunnable;
   };
   args.runner.once('done',function(){
     for(var ky in tsResultsMap){
-      mainJson.testrun.testsuite.push(tsResultsMap[ky]);
+      mainJson.testsuites.testsuite.push(tsResultsMap[ky]);
     }
     util.writeToFile(args.runner.filePath, builder.buildObject(mainJson));
   });
