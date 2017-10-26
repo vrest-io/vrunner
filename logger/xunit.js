@@ -28,6 +28,7 @@ module.exports = function(args){
     testSuitesMap = mp;
   });
   args.runner.once('testrun',function(mp){
+    mainJson.testsuites.$.environment = mp.environment;
     mainJson.testsuites.$.name = mp.name;
     mainJson.testsuites.$.id = mp.id;
   });

@@ -901,6 +901,8 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
       id : vrunner.testRunId,
       createdAt : vrunner.testRunCreatedAt,
       name : vrunner.testRunName,
+      sourceType: vrunner.sourceType,
+      environment: vrunner.environment,
       executor : { name: vrunner.userFullName, email: vrunner.credentials.email }
     };
     callOneQ(PRTR_HOOK_RUNNER, PRTR_HOOK_COL,function(){
@@ -919,13 +921,14 @@ var hasRunPermission = function(instance, project, next){
   });
 };
 
-var createTestRun = function(instanceURL, filterData, next){
+var createTestRun = function(instanceURL, filterData, envId, next){
   var filters = filterData;
   filters.currentPage = 0;
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
-    body: { name : util.getReadableDate(), projectId : true, filterData : filters } }, function(err,res,body){
-      if(err || !body || body.error) next(['Error while creating test run : ',err||body]);
+    body: { name : util.getReadableDate(), projectId : true, filterData : filters, 
+      sourceType: 'vrunner', environmentId:  envId} }, function(err, res, body){
+      if(err || !body || body.error) next(['Error while creating test run : ', err || body]);
       else next(null,body.output);
   });
 };
@@ -1685,13 +1688,16 @@ vRunner.prototype.run = function(next){
     },
     function(cb){
       self.emit('log', 'Creating test run ...');
-      createTestRun(self.instanceURL,self.filters,function(err,testrun){
+      createTestRun(self.instanceURL, self.filters, self.selectedEnvironment || null, function(err, testrun){
         if(err) cb(err, 'VRUN_OVER');
         else {
           console.log('INFO => Test run name : '+testrun.name);
           self.testRunName = testrun.name;
           self.testRunId = testrun.id;
           self.testRunCreatedAt = String(testrun.createdAt);
+          self.sourceType = testrun.sourceType;
+          self.environment = self.projEnv || 'Default',
+          testrun.environment = self.environment;
           self.emit('testrun',testrun);
           cb();
         }
