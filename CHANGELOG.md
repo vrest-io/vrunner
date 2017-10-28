@@ -2,6 +2,7 @@
 All major/minor version changes to this project will be documented in this file.
 
 ## [0.2.40] - 2017-10-28
+### Added
 - Added properties executionSource and environment for the test run.
 
 ## [0.2.39] - 2017-10-24
