@@ -901,7 +901,7 @@ var fetchAndServe = function(url, pageSize, cb, next, vrunner){
       id : vrunner.testRunId,
       createdAt : vrunner.testRunCreatedAt,
       name : vrunner.testRunName,
-      sourceType: vrunner.sourceType,
+      executionSource: vrunner.executionSource,
       environment: vrunner.environment,
       executor : { name: vrunner.userFullName, email: vrunner.credentials.email }
     };
@@ -927,7 +927,7 @@ var createTestRun = function(instanceURL, filterData, envId, next){
   filters.pageSize = 100;
   request({ method: 'POST', uri: instanceURL+'/g/testrun',
     body: { name : util.getReadableDate(), projectId : true, filterData : filters, 
-      sourceType: 'vrunner', environmentId:  envId} }, function(err, res, body){
+      executionSource: 'vrunner', environmentId:  envId} }, function(err, res, body){
       if(err || !body || body.error) next(['Error while creating test run : ', err || body]);
       else next(null,body.output);
   });
@@ -1695,7 +1695,7 @@ vRunner.prototype.run = function(next){
           self.testRunName = testrun.name;
           self.testRunId = testrun.id;
           self.testRunCreatedAt = String(testrun.createdAt);
-          self.sourceType = testrun.sourceType;
+          self.executionSource = testrun.executionSource;
           self.environment = self.projEnv || 'Default',
           testrun.environment = self.environment;
           self.emit('testrun',testrun);
