@@ -1,3 +1,9 @@
+/**
+ *  Supports the following XSDs
+ *    * https://github.com/jenkinsci/xunit-plugin/blob/master/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-8.xsd
+ *    * https://github.com/jenkinsci/xunit-plugin/blob/master/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-9.xsd
+ *    * https://github.com/jenkinsci/xunit-plugin/blob/master/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-10.xsd
+ */
 
 'use strict';
 
@@ -8,8 +14,7 @@ var common = require('./common'), util = require('./../lib/util'), xml2js = requ
     mainJson = {
       testsuites : {
         '$': {
-          name : 'vrest_run',
-          timestamp : new Date().toGMTString()
+          name : 'vrest_run'
         },
         testsuite : [
         ]
@@ -21,6 +26,7 @@ var getDescUrl = function(runner,tr,tc){
 };
 
 module.exports = function(args){
+  var properties = {};
   args.logger = function(log){
     console.log(log);
   };
@@ -28,50 +34,72 @@ module.exports = function(args){
     testSuitesMap = mp;
   });
   args.runner.once('testrun',function(mp){
-    mainJson.testsuites.$.environment = mp.environment;
+    properties = {
+      property: [
+        { $ : {name: 'environment', value: mp.environment || 'Default'}}
+      ]
+    };
     mainJson.testsuites.$.name = mp.name;
-    mainJson.testsuites.$.id = mp.id;
+    //mainJson.testsuites.$.id = mp.id;
   });
   args.testcaseLogger = function(log,tc,trtc){
+    var time = trtc.executionTime/1000;
     var data = {
       '$' : {
         name : ' ' + tc.method + ' ' + tc.url,
         classname : tc.summary || 'No Summary',
-        time : String(trtc.executionTime/1000)
+        time : String(time)
       }
     };
-    var incIn = 'not-executed', incCd = 2;
+    var incIn = 'disabled', incCd = 2;
     if(trtc.isExecuted){
       if(trtc.isPassed){
         incIn = 'passed'; incCd = 1;
-        data.$.message = 'PASSED';
+        //data.$.status = 'PASSED';
+        //data.$.message = 'PASSED';
       } else {
-        incIn = 'failed'; incCd = 0;
-        data.$.message = 'FAILED';
-        data.failure = 'API Endpoint: ' + tc.url+ (tc.summary ? ('\nSummary: ' +tc.summary) : '')+'\nDetailed Info : '+
-              getDescUrl(args.runner,trtc.testRunId,tc.id)+(trtc.remarks ? ('\nRemarks : '+trtc.remarks) : '');
+        incIn = 'failures'; incCd = 0;
+        //data.$.status = 'FAILED';
+        //data.$.message = 'FAILED';
+        data.failure = {
+          _: 'API Endpoint: ' + tc.url+ (tc.summary ? ('\nSummary: ' +tc.summary) : '')+'\nDetailed Info : '+
+              getDescUrl(args.runner,trtc.testRunId,tc.id)+(trtc.remarks ? ('\nRemarks : '+trtc.remarks) : ''),
+          $: {
+            type: "FAILURE"
+          }
+        }
       }
     } else if(!tc.runnable) { //if tc is not runnable
       data.skipped = {};
-      data.$.message = 'NOT_EXECUTED';
+      //data.$.status = 'NOT_EXECUTED';
+      //data.$.message = 'NOT_EXECUTED';
     } else { //if tc was not executed due to some other reasons
-      data.$.message = 'NOT_EXECUTED';
+      //data.$.status = 'NOT_EXECUTED';
+      //data.$.message = 'NOT_EXECUTED';
       if(trtc.remarks) data.error = trtc.remarks;
     }
     if(!tsResultsMap[tc.testSuiteId]){
+      var date = new Date().toISOString();
       tsResultsMap[tc.testSuiteId] = {
         "$" : {
           name : testSuitesMap[tc.testSuiteId] || tc.testSuiteId,
           id : tc.testSuiteId,
-          passed : (incCd === 1) ? 1 : 0,
-          failed : (incCd === 0) ? 1 : 0,
-          'not-executed' : (incCd === 2) ? 1 : 0
+          timestamp : date.substring(0, date.length - 5),
+          time: time,
+          tests: 1,
+          failures : (incCd === 0) ? 1 : 0,
+          disabled : (incCd === 2) ? 1 : 0
         },
+        properties: properties,
         testcase : [data]
       };
     } else {
       tsResultsMap[tc.testSuiteId].testcase.push(data);
-      tsResultsMap[tc.testSuiteId].$[incIn]++;
+      tsResultsMap[tc.testSuiteId].$.tests++;
+      tsResultsMap[tc.testSuiteId].$.time += time;
+      if(incIn !== "passed"){
+        tsResultsMap[tc.testSuiteId].$[incIn]++;
+      }
     }
   };
   args.errorLogger = function(log){
@@ -86,7 +114,7 @@ module.exports = function(args){
   args.reportsLogger = function(log){
     mainJson.testsuites.$.tests = log.total;
     mainJson.testsuites.$.failures = log.failed;
-    mainJson.testsuites.$.skipped = log.notExecuted + log.notRunnable;
+    mainJson.testsuites.$.disabled = log.notExecuted + log.notRunnable;
   };
   args.runner.once('done',function(){
     for(var ky in tsResultsMap){
