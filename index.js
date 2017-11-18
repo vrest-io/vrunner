@@ -695,7 +695,7 @@ var forOneTc = function(report, tc, cb0){
         var actualResults = getActualResults(result);
         trtc.result = actualResults;
         extractVarsFrom(tc.getTc('tcVariables'), actualResults, result.headers);
-        isPassed = assertResults(trtc,tc, self.validatorIdCodeMap);
+        isPassed = assertResults(trtc,tc, self.validatorIdCodeMap, self.validatorIdNameMap);
         setStatusVar(VARS, tc.exStatusAll, tc.exStatusLoop, isPassed ? 2 : 1);
       }
       isPassed = isPassed === true;
@@ -717,13 +717,14 @@ var forOneTc = function(report, tc, cb0){
       VARS.$tc.execution.request.headers = util.stringify(VARS.$tc.execution.request.headers)
     } catch(erm){ }
     VARS.$tc.result = {
+      assertionResults: trtc.assertionRemarks,
       isExecuted : trtc.isExecuted,
       isPassed : trtc.isPassed,
       isRunnable : trtc.isExecuted || Boolean(notRunnable),
       resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
         '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
     };
-    self.emit('after-post-tc',VARS.$tc);
+    self.emit('after-post-tc', VARS.$tc);
     if(tc.canHook){
       if(report.total >= (RUNNER_LIMIT - 1)){
         self.stopped = 'Total number of execution records crossed the maximum limit of '+RUNNER_LIMIT;
@@ -1155,7 +1156,7 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
   parseFromContentAndSet(toSendTC.expectedResults, '_');
   toSendTRTC.actualResults = actualResults;
   setFinalExpContent(toSendTC.expectedResults, toSendTRTC.actualResults);
-  applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs());
+  applyToValidator.push(toSendTC, toSendTRTC, ReplaceModule.getFuncs(), VARS);
   runnerModel.expectedResults = toSendTC.expectedResults;
 };
 
@@ -1222,7 +1223,7 @@ var setAssertionUtil = function(meta){
   }
 };
 
-var assertResults = function(runnerModel, tc, validatorIdCodeMap){
+var assertResults = function(runnerModel, tc, validatorIdCodeMap, validatorIdNameMap){
   if(!tc) tc = {};
   var isPassed = true, toValidate = false, headers = {},
     actualResults = runnerModel.result, isValAss = isAssertionForValidator;
@@ -1234,7 +1235,8 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
     if(ass.id){
       var now = false;
       if(isValAss(ass)) {
-        if(util.getModelVal(ass, 'type') === config.meta.schemaValidatorId) {
+        var validatorId = util.getModelVal(ass, 'type');
+        if(validatorId === config.meta.schemaValidatorId) {
           findAndCacheTheSchemas();
         };
         var erm = tc.expectedResults;
@@ -1242,8 +1244,13 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap){
           initForVal(runnerModel, applyToValidator, tc);
         }
         now = asserting(ass, { forValidator : applyToValidator });
+        now.assertion.type = validatorIdNameMap[validatorId];
       } else {
         now = asserting(ass, findEx(ass, actualResults, runnerModel.executionTime));
+        if(now.assertion.value){
+          now.assertion.expected = now.assertion.value;
+          delete now.assertion.value;
+        }
       }
       if(now){
         ret.push(now);
@@ -1609,10 +1616,16 @@ vRunner.prototype.run = function(next){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.validatorIdCodeMap = {};
+          self.validatorIdNameMap = {};
           var funcVars = ReplaceModule.getFuncs();
           vals.forEach(function(model){
             try {
-              (model.isUtil ? funcVars : self.validatorIdCodeMap)[( model.isUtil ? model.name : model.id)] = eval(model.code);
+              if(model.isUtil){
+                funcVars[model.name] = eval(model.code);
+              } else {
+                self.validatorIdCodeMap[model.id] = eval(model.code);
+                self.validatorIdNameMap[model.id] = model.name;
+              }
             } catch(e){
               console.log(e);
             }
