@@ -18,6 +18,7 @@ var request = require('request').defaults({ jar: true, json: true, headers: { 'x
     OAuth1 = require('./lib/oauth-1_0'),
     loggers = ['console','json','xunit','csv'],
     JSONPath = require('./lib/jsonpath'),
+    AssertionResultUtil = require('./lib/assertionResultUtil'),
     pathUtil = require('path'),
     DOMParser = require('xmldom').DOMParser,
     X_PATH = require('xpath'),
@@ -717,13 +718,14 @@ var forOneTc = function(report, tc, cb0){
       VARS.$tc.execution.request.headers = util.stringify(VARS.$tc.execution.request.headers)
     } catch(erm){ }
     VARS.$tc.result = {
-      assertionResults: trtc.assertionRemarks,
+      assertionResults: trtc.assertionResults,
       isExecuted : trtc.isExecuted,
       isPassed : trtc.isPassed,
       isRunnable : trtc.isExecuted || Boolean(notRunnable),
       resultLink : (self.instanceURL+'/'+self.projectKey+'/testcase') +
         '?testRunId='+self.testRunId+'&showResponse=true&queryText='+trtc.testCaseId+'&loopIndex='+VARS.$
     };
+    delete trtc.assertionResults;
     self.emit('after-post-tc', VARS.$tc);
     if(tc.canHook){
       if(report.total >= (RUNNER_LIMIT - 1)){
@@ -1230,12 +1232,13 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap, validatorIdNam
   actualResults.headers.forEach(function(hd){ if(hd.name) headers[hd.name.toLowerCase()] = hd.value; });
   var findEx = findExAndAc.bind(undefined, headers),
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
-    ret = [], asserting = assert.bind(undefined, validatorIdCodeMap);
-  (tc.getTc('assertions') || []).forEach(function(ass){
+    ret = [], ret1 = [], asserting = assert.bind(undefined, validatorIdCodeMap);
+  (tc.getTc('assertions') || []).forEach(function(ass, index){
     if(ass.id){
-      var now = false;
+      var now = false, validator = false;
       if(isValAss(ass)) {
         var validatorId = util.getModelVal(ass, 'type');
+        validator = validatorIdNameMap[validatorId];
         if(validatorId === config.meta.schemaValidatorId) {
           findAndCacheTheSchemas();
         };
@@ -1244,21 +1247,41 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap, validatorIdNam
           initForVal(runnerModel, applyToValidator, tc);
         }
         now = asserting(ass, { forValidator : applyToValidator });
-        now.assertion.type = validatorIdNameMap[validatorId];
       } else {
         now = asserting(ass, findEx(ass, actualResults, runnerModel.executionTime));
-        if(now.assertion.value){
-          now.assertion.expected = now.assertion.value;
-          delete now.assertion.value;
-        }
       }
       if(now){
+        var passed = now.passed, type = now.assertion.type,
+          expected = now.assertion.value, actual = now.assertion.actual,
+          name = now.assertion.name, property = now.assertion.property;
+        if(runnerModel.result && runnerModel.result.content && now.assertion && typeof actual === 'string'
+            && (actual.indexOf(publicConfiguration.copyFromActual) === 0)){
+          if(actual === publicConfiguration.copyFromActual){
+            actual = runnerModel.result.content;
+          } else {
+            actual = getJSONPathValue(runnerModel.result._parsedContent, property, runnerModel.result.resultType);
+          }
+        }
+        var ass = {
+          passed: passed,
+          assertion: {
+            name: name,
+            property: property,
+            type: type,
+            expected: expected,
+            actual: actual
+          }
+        };
+        ass.resultSummary = AssertionResultUtil.getAssertionResultSummary(
+          index, ass, publicConfiguration.mongoIdRegex, validatorIdNameMap, util.cropString);
+        ret1.push(ass);
         ret.push(now);
         isPassed = isPassed && now.passed;
       }
     }
   });
   runnerModel.assertionRemarks = ret;
+  runnerModel.assertionResults = ret1;
   return isPassed;
 };
 

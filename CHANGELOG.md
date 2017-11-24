@@ -1,6 +1,18 @@
 # Changelog
 All major/minor version changes to this project will be documented in this file.
 
+## [0.2.43] - 2017-11-24
+### Changed
+- vrunner JSON report updated. Now JSON report includes assertion results summary as well.
+
+### Bug Fixes
+- Fixed bug related to assertion results data stored on server via vrunner
+
+
+## [0.2.42] - 2017-11-18 (Discontinued due to assertion results data bug)
+### Changed
+- vrunner JSON report updated. Now JSON report includes assertion results as well.
+
 ## [0.2.41] - 2017-11-04
 ### Changed
 - vrunner xunit report updated according to [JUnit-10 XSD](https://github.com/jenkinsci/xunit-plugin/blob/master/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-10.xsd) formmat.
