@@ -31,6 +31,9 @@ module.exports = function(args){
     console.log(log);
   };
   args.remarksLogger = function(log){
+    if(!mainFile.result){
+      mainFile.result = {};
+    }
     mainFile.result.remarks = log;
   };
   args.reportsLogger = function(log){
