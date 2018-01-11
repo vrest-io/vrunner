@@ -1,6 +1,10 @@
 # Changelog
 All major/minor version changes to this project will be documented in this file.
 
+## [0.2.44] - 2017-01-09
+### Changed
+- Test Suite filter related bug resolved.
+
 ## [0.2.43] - 2017-11-24
 ### Changed
 - vrunner JSON report updated. Now JSON report includes assertion results summary as well.
