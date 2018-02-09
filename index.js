@@ -602,19 +602,45 @@ var oneTimeCache = function(vrunner, records, total){
   pages[0] = records;
 };
 
-var refreshToken = function(auth, cb){
+var getAuthConfig = function(auth, environmentId){
   var authConfig = auth.authConfig;
-  var url = this.instanceURL + '/oauth2/refreshToken/' + auth.id;
+
+  if(environmentId){
+    var envAuthConfig = auth.envAuthConfig;
+    if(envAuthConfig && envAuthConfig[environmentId]){
+      authConfig = envAuthConfig[environmentId];
+    }
+  }
+  return authConfig || {};
+};
+
+var refreshToken = function(auth, cb){
+  var authConfig = auth.authConfig,
+    usedEnvironmentConfig = "default",
+    environmentId = this.selectedEnvironment;
+
+  if(environmentId){
+    var envAuthConfig = auth.envAuthConfig;
+    if(envAuthConfig && envAuthConfig[environmentId]){
+      authConfig = envAuthConfig[environmentId];
+      usedEnvironmentConfig = environmentId;
+    }
+  }
+
+  var url = this.instanceURL + '/oauth2/refreshToken/' + auth.id + '/' + usedEnvironmentConfig;
   request({ method: 'POST', uri: url }, function(err, res, body){
     if(err || !body || body.error) return cb(body && body.error || err);
     else {
       if(body.output && body.output.authConfig){
         var ac = body.output.authConfig;
+        if(usedEnvironmentConfig !== "default"){
+          ac = body.output.envAuthConfig && body.output.envAuthConfig[usedEnvironmentConfig] || {};
+        }
         authConfig.accessToken = ac.accessToken;
         authConfig.accessTokenType = ac.accessTokenType;
         authConfig.expiresAt = ac.expiresAt;
         authConfig.expiresIn = ac.expiresIn;
-        MAIN_AUTHORIZATIONS[auth.id] = getAuthHeader(auth);
+        MAIN_AUTHORIZATIONS[auth.id] = getAuthHeader(auth, environmentId);
       }
       return cb(null, body);
     }
@@ -687,7 +713,7 @@ var forOneTc = function(report, tc, cb0){
         }
       } else if(err) {
         remarks = 'An error has occurred while executing this test '+ wt +'. Error logged : ' + JSON.stringify(err);
-        setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
+        setStatusVar(VARS,tc.exStatusAll, tc.exStatusLoop, 0);
       } else if(result === undefined || result === null) {
         remarks = 'An unknown error occurred while receiving response for the Test '+ wt +'.';
         setStatusVar(VARS,tc.exStatusAll,tc.exStatusLoop,0);
@@ -932,25 +958,24 @@ var createTestRun = function(instanceURL, filterData, envId, next){
     body: { name : util.getReadableDate(), projectId : true, filterData : filters, 
       executionSource: 'vrunner', environmentId:  envId} }, function(err, res, body){
       if(err || !body || body.error) next(['Error while creating test run : ', err || body]);
-      else next(null,body.output);
+      else next(null, body.output);
   });
 };
 
-var getBasicAuthHeader = function(ath){
-  var authConfig = ath.authConfig || '', token = authConfig.username + ':' + authConfig.password;
+var getBasicAuthHeader = function(authConfig){
+  var token = authConfig.username + ':' + authConfig.password;
   return 'Basic ' + btoa(token);
 };
 
-var getOAuthTwoHeader = function(ath){
-  var authConfig = ath.authConfig || {};
+var getOAuthTwoHeader = function(authConfig){
   return (authConfig.accessTokenType || 'OAuth') + ' ' + authConfig.accessToken;
 };
 
-var getAuthHeader = function(ath){
+var getAuthHeader = function(ath, environmentId){
   var authType = ath.authType,
-      authConfig = ath.authConfig || {};
+      authConfig = getAuthConfig(ath, environmentId);
   if(authType === 'basic'){
-    return getBasicAuthHeader(ath);
+    return getBasicAuthHeader(authConfig);
   } else if(authType === 'raw'){
     return authConfig.authHeader || '';
   } else if(authType === 'oauth1.0'){
@@ -958,7 +983,7 @@ var getAuthHeader = function(ath){
       return (new OAuth1(authConfig, tc.method, tc.url)).getAuthHeader();
     };
   } else if(authType === 'oauth2.0'){
-    return getOAuthTwoHeader(ath);
+    return getOAuthTwoHeader(authConfig);
   }
 }, shouldRefresh = function(expiresAt){
   if(expiresAt){
@@ -975,12 +1000,17 @@ var getAuthHeader = function(ath){
   }
 }, resolveAuthorization = function(runner, authorizationId, ret, cb){
   if(typeof MAIN_AUTHORIZATIONS[authorizationId] === 'function'){
-    return MAIN_AUTHORIZATIONS[authorizationId](ret);
+    var result = MAIN_AUTHORIZATIONS[authorizationId](ret);
+    if(cb){
+      cb(null, result);
+    } else {
+      return result;  
+    }
   } else {
     var auth = MAIN_AUTHS[authorizationId];
     if(auth && cb){
       var authType = auth.authType,
-        authConfig = auth.authConfig;
+        authConfig = getAuthConfig(auth, runner.selectedEnvironment);
 
       if(authType === "oauth2.0"){
         var refreshRequired = shouldRefresh(authConfig.expiresAt);
@@ -1585,20 +1615,6 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'authorization', function(err,auths){
-        if(err) cb(err, 'VRUN_OVER');
-        else {
-          if(Array.isArray(auths)){
-            for(var k = 0; k < auths.length; k++){
-              MAIN_AUTHORIZATIONS[auths[k].id] = getAuthHeader(auths[k]);
-              MAIN_AUTHS[auths[k].id] = auths[k];
-            }
-          }
-          cb();
-        }
-      });
-    },
-    function(cb){
       findHelpers(self, 'testsuite', function(err,records){
         if(err) cb(err, 'VRUN_OVER');
         else {
@@ -1687,7 +1703,7 @@ vRunner.prototype.run = function(next){
       });
     },
     function(cb){
-      findHelpers(self, 'projenv', function(err,envs){
+      findHelpers(self, 'projenv', function(err, envs){
         if(err) cb(err, 'VRUN_OVER');
         else {
           self.selectedEnvironment = false;
@@ -1699,11 +1715,25 @@ vRunner.prototype.run = function(next){
           }
           if(!self.selectedEnvironment){
             if(self.projEnv && self.projEnv !== 'Default'){
-              self.emit('error', 'Project environment "' + self.projEnv + '" not found.');
+              self.emit('error', 'Project environment "' + self.projEnv + '" not found. Environment name is case sensitive, so make sure you have provided the correct name.');
               if(self.exitOnDone) process.exit(1);
               else self.emit('handle_the_exit', 1);
             } else {
               self.selectedEnvironment = undefined;
+            }
+          }
+          cb();
+        }
+      });
+    },
+    function(cb){
+      findHelpers(self, 'authorization', function(err, auths){
+        if(err) cb(err, 'VRUN_OVER');
+        else {
+          if(Array.isArray(auths)){
+            for(var k = 0; k < auths.length; k++){
+              MAIN_AUTHORIZATIONS[auths[k].id] = getAuthHeader(auths[k], self.selectedEnvironment);
+              MAIN_AUTHS[auths[k].id] = auths[k];
             }
           }
           cb();
