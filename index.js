@@ -9,404 +9,353 @@
 'use strict';
 
 var request = require('request').defaults({ jar: true, json: true, headers: { 'x-vrest-request-source': 'vrunner' } }),
-    zSchemaValidator = require('z-schema'),
-    events = require('events'),
-    jsonSchemaFiles = require('./lib/schemaFiles'),
-    util = require('./lib/util'),
-    runner = require('./lib/testRunner'),
-    ReplaceModule = require('./lib/replacingStrings'),
-    OAuth1 = require('./lib/oauth-1_0'),
-    loggers = ['console','json','xunit','csv'],
-    JSONPath = require('./lib/jsonpath'),
-    AssertionResultUtil = require('./lib/assertionResultUtil'),
-    pathUtil = require('path'),
-    DOMParser = require('xmldom').DOMParser,
-    X_PATH = require('xpath'),
-    btoa = require('btoa'),
-    mainUrlUtil = require('url'),
-    V_BASE_URL = 'https://vrest.io/',
-    publicConfiguration = {},
-    RUNNER_LIMIT = 5000,
-    LOOP_LIMIT = 100,
-    EMAIL_REGEX = /^\S+@\S+\.\S+$/,
-    ORG_URL_PREFIX = 'i/',
-    START_VAR_EXPR = '{{',
-    END_VAR_EXPR = '}}',
-    TRTC_BATCH = 5,
-    MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
-    _ = {
-      extend: util.extend.bind(util),
-      isEmpty: util.isEmpty.bind(util)
-    },
-    pages,
-    MAIN_AUTHORIZATIONS,
-    MAIN_AUTHS,
-    SAVING_RESULTS,
-    MAIN_COLLECTION,
-    PRE_HOOK_COL,
-    POST_HOOK_COL,
-    NO_OF_EXECUTED,
-    PRTR_HOOK_COL,
-    PSTR_HOOK_COL,
-    LOOPS,
-    JSONSchemasRefs,
-    options,
-    replacingString,
-    VARS,
-    findHelpers,
-    config;
+  zSchemaValidator = require('z-schema'),
+  events = require('events'),
+  jsonSchemaFiles = require('./lib/schemaFiles'),
+  util = require('./lib/util'),
+  runner = require('./lib/testRunner'),
+  ReplaceModule = require('./lib/replacingStrings'),
+  OAuth1 = require('./lib/oauth-1_0'),
+  loggers = ['console','json','xunit','csv'],
+  JSONPath = require('./lib/jsonpath'),
+  AssertionResultUtil = require('./lib/assertionResultUtil'),
+  pathUtil = require('path'),
+  DOMParser = require('xmldom').DOMParser,
+  X_PATH = require('xpath'),
+  btoa = require('btoa'),
+  mainUrlUtil = require('url'),
+  V_BASE_URL = 'https://vrest.io/',
+  publicConfiguration = {},
+  RUNNER_LIMIT = 5000,
+  LOOP_LIMIT = 100,
+  EMAIL_REGEX = /^\S+@\S+\.\S+$/,
+  ORG_URL_PREFIX = 'i/',
+  START_VAR_EXPR = '{{',
+  END_VAR_EXPR = '}}',
+  TRTC_BATCH = 5,
+  MONGO_REGEX = /^[0-9a-fA-F]{24}$/,
+  _ = {
+    extend: util.extend.bind(util),
+    isEmpty: util.isEmpty.bind(util)
+  },
+  pages,
+  MAIN_AUTHORIZATIONS,
+  MAIN_AUTHS,
+  SAVING_RESULTS,
+  MAIN_COLLECTION,
+  PRE_HOOK_COL,
+  POST_HOOK_COL,
+  NO_OF_EXECUTED,
+  PRTR_HOOK_COL,
+  PSTR_HOOK_COL,
+  LOOPS,
+  JSONSchemasRefs,
+  options,
+  replacingString,
+  VARS,
+  findHelpers,
+  config;
 
-function initAll() {
-  pages = [false];
-  MAIN_AUTHORIZATIONS = {};
-  MAIN_AUTHS = {};
-  SAVING_RESULTS = 0;
-  MAIN_COLLECTION = [];
-  PRE_HOOK_COL = [];
-  POST_HOOK_COL = [];
-  NO_OF_EXECUTED = 0;
-  PRTR_HOOK_COL = [];
-  PSTR_HOOK_COL = [];
-  LOOPS = [];
-  JSONSchemasRefs = [];
-  options = {
-    credentials : {},
-    logger : 'console',
-    varColMap : {},
-    projEnv : undefined,
-    exitOnDone : true,
-    pageSize : 100,
-    authorizations : {},
-    validatorIdCodeMap : {}
-  };
-  config = {
-    invalidLpCond : 'V_INVALID_LOOP',
-    meta : publicConfiguration
-  };
-  replacingString = ReplaceModule.replace;
-  VARS = ReplaceModule.getVars();
-  VARS.$ = 0;
-  TotalRecords = 0;
-  findHelpers = function(prefetch, vrunner, what, next){
-    vrunner.emit('log', 'Finding '+what+'s ...');
-    if(what === 'publicConfiguration'){
-      if(typeof prefetch[what] !== 'object') prefetch[what] = {};
-    } else {
-      if(!Array.isArray(prefetch[what])) prefetch[what] = [];
-    }
-    next(null,prefetch[what]);
-  };
-};
-
-  var XML_EQUAL_SIGN = '{{*}}', XML_EQUAL_TO = '{{*}}';
-
-  function isValidXMLStar(vl){
-    return (ReplaceModule.isWithVars(vl) && (vl.trim()) === XML_EQUAL_SIGN);
-  }
-
-  // Changes XML to JSON, https://davidwalsh.name/convert-xml-json
-  function xmlToJson(xml,withStar) {
-
-    // Create the return object
-    var obj = {};
-
-    if (xml.nodeType == 1) { // element
-      // do attributes
-      if (xml.attributes.length > 0) {
-      obj["@attributes"] = {};
-        for (var j = 0; j < xml.attributes.length; j++) {
-          var attribute = xml.attributes.item(j);
-          obj["@attributes"][attribute.nodeName] =
-            (withStar && isValidXMLStar(attribute.nodeValue))? XML_EQUAL_TO : attribute.nodeValue;
-        }
-      }
-    } else if (xml.nodeType == 3) { // text
-      obj = getTextContent(xml.nodeValue);
-    } else if (xml.nodeType == 4) { // text
-      return xml.textContent;
-    }
-
-    // do children
-    if (xml.hasChildNodes()) {
-      for(var i = 0; i < xml.childNodes.length; i++) {
-        var item = xml.childNodes.item(i);
-        var nodeName = item.nodeName;
-        if (typeof(obj[nodeName]) == "undefined") {
-          obj[nodeName] = xmlToJson(item,withStar);
-        } else if(nodeName !== '#text'){
-          if (typeof(obj[nodeName].push) == "undefined") {
-            var old = obj[nodeName];
-            obj[nodeName] = [];
-            obj[nodeName].push(old);
-          }
-          obj[nodeName].push(xmlToJson(item,withStar));
-        }
-      }
-    }
-    if(withStar && isValidXMLStar(obj['#text'])){
-      obj['#text'] = XML_EQUAL_TO;
+  function initAll() {
+    pages = [false];
+    MAIN_AUTHORIZATIONS = {};
+    MAIN_AUTHS = {};
+    SAVING_RESULTS = 0;
+    MAIN_COLLECTION = [];
+    PRE_HOOK_COL = [];
+    POST_HOOK_COL = [];
+    NO_OF_EXECUTED = 0;
+    PRTR_HOOK_COL = [];
+    PSTR_HOOK_COL = [];
+    LOOPS = [];
+    JSONSchemasRefs = [];
+    options = {
+      credentials : {},
+      logger : 'console',
+      varColMap : {},
+      projEnv : undefined,
+      exitOnDone : true,
+      pageSize : 100,
+      authorizations : {},
+      validatorIdCodeMap : {}
     };
-    return obj;
+    config = {
+      invalidLpCond : 'V_INVALID_LOOP',
+      meta : publicConfiguration
+    };
+    replacingString = ReplaceModule.replace;
+    VARS = ReplaceModule.getVars();
+    VARS.$ = 0;
+    TotalRecords = 0;
+    findHelpers = function(prefetch, vrunner, what, next){
+      vrunner.emit('log', 'Finding '+what+'s ...');
+      if(what === 'publicConfiguration'){
+        if(typeof prefetch[what] !== 'object') prefetch[what] = {};
+      } else {
+        if(!Array.isArray(prefetch[what])) prefetch[what] = [];
+      }
+      next(null,prefetch[what]);
+    };
   };
 
   function getTextContent(str){
     return str.trim();
   }
 
-    var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
+  var NOT_RES = 'V_PATH_NOT_RESOLVED', XMLPath;
 
-    var domParser;
-    if(typeof DOMParser === 'function'){
-      domParser = new DOMParser();
-    }
-    if(domParser === undefined){
-      domParser = { parseFromString : function(){ return false; } }
-      XMLPath = function(){ return NOT_RES; };
-    } else {
-      XMLPath = function(XMLNode,path){
-        try {
-          var headings = X_PATH.evaluate(path,XMLNode,null,X_PATH.XPathResult.ANY_TYPE,null);
-        } catch(erm){
-          return NOT_RES;
-        }
-        var thisHeading = (headings && headings.iterateNext()), resp = "";
-        if(thisHeading){
-          while (thisHeading) {
-            if(resp) resp += '\n';
-            resp += getTextContent(thisHeading.textContent);
-            thisHeading = headings.iterateNext();
-          }
-          return resp;
-        } else {
-          return NOT_RES;
-        }
-      };
-    }
-
-    var getJsonPath = function(path){
-      if(typeof path === 'string' && path.length) {
-        if(path.charAt(0) === '$') return path;
-        return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
+  var domParser;
+  if(typeof DOMParser === 'function'){
+    domParser = new DOMParser();
+  }
+  if(domParser === undefined){
+    domParser = { parseFromString : function(){ return false; } }
+    XMLPath = function(){ return NOT_RES; };
+  } else {
+    XMLPath = function(XMLNode,path){
+      try {
+        var headings = X_PATH.evaluate(path,XMLNode,null,X_PATH.XPathResult.ANY_TYPE,null);
+      } catch(erm){
+        return NOT_RES;
       }
-    }, getJsonOrString = function(vlm,tp){
-      if(typeof vlm === 'string'){
-        if(tp === 'json' || tp !== 'xml'){
-          return processUtil.getJsonOrString(vlm);
-        } else {
-          var abm = domParser.parseFromString(vlm,'application/xml');
-          return abm;
+      var thisHeading = (headings && headings.iterateNext()), resp = "";
+      if(thisHeading){
+        while (thisHeading) {
+          if(resp) resp += '\n';
+          resp += getTextContent(thisHeading.textContent);
+          thisHeading = headings.iterateNext();
         }
-      }
-      return vlm;
-    }, parseFromContentAndSet = function(result, prop, isEx){
-      var prop = (prop || '') + 'parsedContent';
-      if(!(result.hasOwnProperty(prop))){
-        result._parsedContent = getJsonOrString(result.content,result.resultType);
-        if(result._parsedContent){
-          if(result.resultType === 'json'){
-            result.parsedContent = result._parsedContent;
-          } else if(result.resultType === 'xml' && prop.charAt(0) === 'p'){
-            result.parsedContent = xmlToJson(result._parsedContent, isEx);
-          }
-        }
-      }
-      return result[prop];
-    };
-
-    var getJSONPathValue = function(json, path, wth){
-      var ifNotResolved = ReplaceModule.replace, tm, ret = 'V_PATH_NOT_RESOLVED', tp;
-      if(wth !== 'xml'){
-        tm = JSONPath;
-        path = getJsonPath(path);
-        if(typeof(json) != 'object' || !json) return ret;
+        return resp;
       } else {
-        tm = XMLPath;
-      }
-      ret = tm(json, path);
-
-      if(ret === 'V_PATH_NOT_RESOLVED' && typeof ifNotResolved === 'function') {
-        tp = ifNotResolved(path);
-        if(tp !== path) ret = tm(json, tp);
-      }
-      if(Array.isArray(ret) && ret.length === 1) return ret[0];
-      else return ret;
-    };
-
-    var TotalRecords;
-
-    var findTcVarsName = function(what,which){
-      var ar = what.tcVariables || [];
-      if(Array.isArray(ar)){
-        var ln = ar.length;
-        for(var z =0 ; z< ln; z++){
-          if(ar[z] && ar[z].type === which){
-            return ar[z].name;
-          }
-        }
-      }
-    }, setLoopStatus = function(vrs,fl,lp,vl,exStatusAll){
-      if(!(Array.isArray(vrs[fl]))) vrs[fl] = [];
-      var ar = vrs[fl];
-      if(ar[lp] === undefined){
-        while(ar.length <= lp){ ar.push(undefined); }
-      }
-      ar[lp] = vl;
-      if(exStatusAll){
-        var ls = { isRunnable : false, isExecuted : false, isPassed : true }, ln = ar.length;
-        if(ln) { ls.isRunnable = true; ls.isExecuted = true; }
-        for(var z = 0; z < ln; z++){
-          ['isPassed','isExecuted','isRunnable'].forEach(function(frm){
-            ls[frm] = ls[frm] && (ar[z][frm]);
-          });
-        }
-        return ls;
-      }
-    }, setStatusVar = function(vrs, exStatusAll, lpfl, vl){
-      var ls = { isRunnable : false, isExecuted : false, isPassed : false };
-      if(typeof vl === 'number'){
-        if(vl > 0){
-          ls.isExecuted = ls.isRunnable = true;
-          ls.isPassed = (vl === 2);
-        } else if(vl === 0){
-          ls.isRunnable = true;
-        }
-        if(lpfl){
-          ls = setLoopStatus(vrs, lpfl, VARS.$, ls, exStatusAll);
-        }
-        if(exStatusAll && ls){
-          vrs[exStatusAll] = ls;
-        }
+        return NOT_RES;
       }
     };
+  }
 
-    /*
-     * replacing all the entities of test cases that need to be handled with variables
-     *
-     * @param {Object} tc - the test case
-     *
-     * @return {Object} tc - the modified test case, with all the variables replaced with corresponding values
-     * */
-    var processUtil = {
-      extractPathVars: function(params) {
-        if(Array.isArray(params)){
-          params.forEach(function(v){
-            var ky = util.getModelVal(v, 'name');
-            if(v.id && ky && v.method === 'path') {
-              //path variables will overwrite previously defined variables
-              VARS[replacingString(ky)] = replacingString(util.getModelVal(v, 'value') || '');
-            }
-          });
+  var getJsonPath = function(path){
+    if(typeof path === 'string' && path.length) {
+      if(path.charAt(0) === '$') return path;
+      return '$'+(path.charAt(0) === '[' ? '' : '.') + path;
+    }
+  }, getJsonOrString = function(vlm,tp){
+    if(typeof vlm === 'string'){
+      if(tp === 'json' || tp !== 'xml'){
+        return processUtil.getJsonOrString(vlm);
+      } else {
+        var abm = domParser.parseFromString(vlm,'application/xml');
+        return abm;
+      }
+    }
+    return vlm;
+  }, parseFromContentAndSet = function(result, prop, isEx){
+    var prop = (prop || '') + 'parsedContent';
+    if(!(result.hasOwnProperty(prop))){
+      result._parsedContent = getJsonOrString(result.content,result.resultType);
+      if(result._parsedContent){
+        if(result.resultType === 'json'){
+          result.parsedContent = result._parsedContent;
+        } else if(result.resultType === 'xml' && prop.charAt(0) === 'p'){
+          result.parsedContent = isEx ? util.starXmlToJson(result._parsedContent) : util.xmlToJson(result._parsedContent);
         }
-      },
+      }
+    }
+    return result[prop];
+  };
 
-      getJsonOrString: ReplaceModule.getJsonOrString,
+  var getJSONPathValue = function(json, path, wth){
+    var ifNotResolved = ReplaceModule.replace, tm, ret = 'V_PATH_NOT_RESOLVED', tp;
+    if(wth !== 'xml'){
+      tm = JSONPath;
+      path = getJsonPath(path);
+      if(typeof(json) != 'object' || !json) return ret;
+    } else {
+      tm = XMLPath;
+    }
+    ret = tm(json, path);
 
-      getReadableString : function(st,blank){
-        if(blank && (st === undefined || st === null)) return '';
-        if(typeof st === 'string') return st;
-        if(typeof st === 'object') return JSON.stringify(st);
-        return String(st);
-      },
+    if(ret === 'V_PATH_NOT_RESOLVED' && typeof ifNotResolved === 'function') {
+      tp = ifNotResolved(path);
+      if(tp !== path) ret = tm(json, tp);
+    }
+    if(Array.isArray(ret) && ret.length === 1) return ret[0];
+    else return ret;
+  };
 
-      getReplacedStringifiedObject : ReplaceModule.getReplacedStringifiedObject,
+  var TotalRecords;
 
-      completeURL: function(url, params) {
-        var s = '', i = 0,l, pm;
-        if(!params || typeof params !== 'object') return url;
-        var make = function(vl, i){
-          s += (((s)?'&':'?')) + i + '=' + (typeof (vl) === 'object' ? util.stringify(vl) : (vl || ''));
-        };
-        if(Array.isArray(params)){
-          for(i=0,l=params.length;i<l;i++){
-            pm = params[i];
-            if(pm.toJSON) pm = pm.toJSON();
-            if(pm.method == 'query' && pm.name && pm.name.length) {
-              make(pm.value, pm.name);
-            }
+  var findTcVarsName = function(what,which){
+    var ar = what.tcVariables || [];
+    if(Array.isArray(ar)){
+      var ln = ar.length;
+      for(var z =0 ; z< ln; z++){
+        if(ar[z] && ar[z].type === which){
+          return ar[z].name;
+        }
+      }
+    }
+  }, setLoopStatus = function(vrs,fl,lp,vl,exStatusAll){
+    if(!(Array.isArray(vrs[fl]))) vrs[fl] = [];
+    var ar = vrs[fl];
+    if(ar[lp] === undefined){
+      while(ar.length <= lp){ ar.push(undefined); }
+    }
+    ar[lp] = vl;
+    if(exStatusAll){
+      var ls = { isRunnable : false, isExecuted : false, isPassed : true }, ln = ar.length;
+      if(ln) { ls.isRunnable = true; ls.isExecuted = true; }
+      for(var z = 0; z < ln; z++){
+        ['isPassed','isExecuted','isRunnable'].forEach(function(frm){
+          ls[frm] = ls[frm] && (ar[z][frm]);
+        });
+      }
+      return ls;
+    }
+  }, setStatusVar = function(vrs, exStatusAll, lpfl, vl){
+    var ls = { isRunnable : false, isExecuted : false, isPassed : false };
+    if(typeof vl === 'number'){
+      if(vl > 0){
+        ls.isExecuted = ls.isRunnable = true;
+        ls.isPassed = (vl === 2);
+      } else if(vl === 0){
+        ls.isRunnable = true;
+      }
+      if(lpfl){
+        ls = setLoopStatus(vrs, lpfl, VARS.$, ls, exStatusAll);
+      }
+      if(exStatusAll && ls){
+        vrs[exStatusAll] = ls;
+      }
+    }
+  };
+
+  /*
+   * replacing all the entities of test cases that need to be handled with variables
+   *
+   * @param {Object} tc - the test case
+   *
+   * @return {Object} tc - the modified test case, with all the variables replaced with corresponding values
+   */
+  var processUtil = {
+    extractPathVars: function(params) {
+      if(Array.isArray(params)){
+        params.forEach(function(v){
+          var ky = util.getModelVal(v, 'name');
+          if(v.id && ky && v.method === 'path') {
+            //path variables will overwrite previously defined variables
+            VARS[replacingString(ky)] = replacingString(util.getModelVal(v, 'value') || '');
           }
-        } else {
-          for(i in params){
-            make(params[i], i);
+        });
+      }
+    },
+
+    getJsonOrString: ReplaceModule.getJsonOrString,
+
+    getReadableString : function(st,blank){
+      if(blank && (st === undefined || st === null)) return '';
+      if(typeof st === 'string') return st;
+      if(typeof st === 'object') return JSON.stringify(st);
+      return String(st);
+    },
+
+    getReplacedStringifiedObject : ReplaceModule.getReplacedStringifiedObject,
+
+    completeURL: function(url, params) {
+      var s = '', i = 0,l, pm;
+      if(!params || typeof params !== 'object') return url;
+      var make = function(vl, i){
+        s += (((s)?'&':'?')) + i + '=' + (typeof (vl) === 'object' ? util.stringify(vl) : (vl || ''));
+      };
+      if(Array.isArray(params)){
+        for(i=0,l=params.length;i<l;i++){
+          pm = params[i];
+          if(pm.toJSON) pm = pm.toJSON();
+          if(pm.method == 'query' && pm.name && pm.name.length) {
+            make(pm.value, pm.name);
           }
         }
-        return url + (s || '');
-      },
-
-      replacingString : function(str){
-        return ReplaceModule.replace(str);
-      },
-
-      configureVarCol : function(varCol,opt){
-        //varCol: global variable collection
-        if(!(opt.dontClear)) ReplaceModule.clearVars();
-        var key, vlu, tmp, typ;
-        for(var z=0, v = null, len = varCol.length;z<len;z++){
-          v = varCol[z];
-          if(v.id && (v.projEnvId === opt.selectedEnvironment)){
-            key = util.getModelVal(v, 'key');
-            vlu = processUtil.replacingString(util.getModelVal(v,'value'));
-            typ = util.getModelVal(v,'varType');
-            if(typ !== 'string'){
-              try {
-                tmp = JSON.parse(vlu);
-              } catch(e){
-              }
-            }
-            if(typ === typeof tmp) {
-              vlu = tmp;
-            }
-            VARS[key] = vlu;
-          }
+      } else {
+        for(i in params){
+          make(params[i], i);
         }
-        return VARS;
-      },
+      }
+      return url + (s || '');
+    },
 
-      isConditionPassed : function(mk,def){
-        var evl;
-        if(def !== false) def = true;
-        if(typeof mk === 'string'){
-          if(!(mk.length)){
-            return def;
+    replacingString : function(str){
+      return ReplaceModule.replace(str);
+    },
+
+    configureVarCol : function(varCol,opt){
+      //varCol: global variable collection
+      if(!(opt.dontClear)) ReplaceModule.clearVars();
+      var key, vlu, tmp, typ;
+      for(var z=0, v = null, len = varCol.length;z<len;z++){
+        v = varCol[z];
+        if(v.id && (v.projEnvId === opt.selectedEnvironment)){
+          key = util.getModelVal(v, 'key');
+          vlu = processUtil.replacingString(util.getModelVal(v,'value'));
+          typ = util.getModelVal(v,'varType');
+          if(typ !== 'string'){
+            try {
+              tmp = JSON.parse(vlu);
+            } catch(e){
+            }
           }
-          try {
-            evl = eval(mk);
-          } catch(er){
-            return 'INVALID_CONDITION`'+mk+'`:'+(er.message||'');
+          if(typ === typeof tmp) {
+            vlu = tmp;
           }
-        } else if(mk !== undefined && mk !== null){
-          evl = mk;
+          VARS[key] = vlu;
         }
-        if(evl === true || evl === 'true') {
-          return true;
-        } else if(evl === false || evl === 'false') {
-          return false;
-        } else {
+      }
+      return VARS;
+    },
+
+    isConditionPassed : function(mk,def){
+      var evl;
+      if(def !== false) def = true;
+      if(typeof mk === 'string'){
+        if(!(mk.length)){
           return def;
         }
-      },
-
-      setupHeaderInTc : function(tc){
-        var setHeaderFromRaw = false;
-
-        if(tc.raw && tc.raw.enabled && tc.raw.content) {
-          setHeaderFromRaw = tc.raw.resultType;
+        try {
+          evl = eval(mk);
+        } catch(er){
+          return 'INVALID_CONDITION`'+mk+'`:'+(er.message||'');
         }
-        if(tc.headers){
-          tc.headers.forEach(function(header){
-            if(header.id && header.name && header.name.toLowerCase() === 'content-type'){
-              setHeaderFromRaw = false;
-            }
-          });
-        }
-        if(setHeaderFromRaw === 'json' || setHeaderFromRaw === 'xml'){
-          if(!Array.isArray(tc.headers)){
-            tc.headers = [];
-          }
-          tc.headers.push({ id : 'VREST_CNT_HEADER', name : 'Content-Type', value : 'application/'+setHeaderFromRaw });
-        }
-        return tc;
+      } else if(mk !== undefined && mk !== null){
+        evl = mk;
       }
-    };
+      if(evl === true || evl === 'true') {
+        return true;
+      } else if(evl === false || evl === 'false') {
+        return false;
+      } else {
+        return def;
+      }
+    },
+
+    setupHeaderInTc : function(tc){
+      var setHeaderFromRaw = false;
+
+      if(tc.raw && tc.raw.enabled && tc.raw.content) {
+        setHeaderFromRaw = tc.raw.resultType;
+      }
+      if(tc.headers){
+        tc.headers.forEach(function(header){
+          if(header.id && header.name && header.name.toLowerCase() === 'content-type'){
+            setHeaderFromRaw = false;
+          }
+        });
+      }
+      if(setHeaderFromRaw === 'json' || setHeaderFromRaw === 'xml'){
+        if(!Array.isArray(tc.headers)){
+          tc.headers = [];
+        }
+        tc.headers.push({ id : 'VREST_CNT_HEADER', name : 'Content-Type', value : 'application/'+setHeaderFromRaw });
+      }
+      return tc;
+    }
+  };
 
 function RunnerModel(ob){
   var self = this;
@@ -1195,17 +1144,17 @@ var initForValidator = function(headersMap, runnerModel, applyToValidator, tc){ 
 
 var setFinalExpContent = function(er,ar){
   var toSet = false;
-  if(util.isWithVars(er.content)){
+  if(util.isWithVars(er.content) || er.resultType === 'xml'){
     var spcl = START_VAR_EXPR + '*' + END_VAR_EXPR;
     toSet = true;
     if(er.content === spcl) {
       er.content = ar.content;
     } else if(er.resultType === 'json' || er.resultType === 'xml') {
-      var spclIn = er.content.indexOf(spcl), isSpcl = true;
       var erj = parseFromContentAndSet(er, false, true);
       var arj = parseFromContentAndSet(ar, false);
-      if(typeof erj === 'object' && isSpcl){
-        util.mergeObjects(erj, arj, { spcl : spcl });
+      if(typeof erj === 'object'){
+        util.mergeObjects(erj, arj, { spcl : spcl, startVarExpr: START_VAR_EXPR, endVarExpr: END_VAR_EXPR,
+          forXML: (er.resultType === 'xml') });
       }
       if(er.resultType === 'json'){
         er.content = util.stringify(erj);
