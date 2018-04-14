@@ -617,6 +617,29 @@ var forOneTc = function(report, tc, cb0){
     executionTime: 0
   };
   var over = function(){
+
+    //ts status and execution time
+    if(MONGO_REGEX.test(tc.testSuiteId)){
+      if(!report.tsMap[tc.testSuiteId]){
+        report.tsMap[tc.testSuiteId] = {
+          executionTime: 0,
+          isExecuted: true,
+          isPassed: true,
+          testRunId: self.testRunId,
+          testSuiteId: tc.testSuiteId
+        };
+      }
+
+      if(trtc.isExecuted && !trtc.isPassed){
+        report.tsMap[tc.testSuiteId].isPassed = false;
+      }
+
+      if(trtc.executionTime){
+        report.tsMap[tc.testSuiteId].executionTime += trtc.executionTime;
+        report.executionTime += trtc.executionTime;  
+      }
+    }
+
     report.total++;
     if(tc.canHook){ NO_OF_EXECUTED++; }
     if(trtc.isExecuted){
@@ -1440,13 +1463,20 @@ vRunner.prototype.refreshToken = refreshToken;
 vRunner.prototype.saveReport = function(error, url, report, next, stopped){
   var self = this;
   if(!stopped) stopped = this.stopped;
+  var allTRTS = [];
+  for(var tsId in report.tsMap){
+    allTRTS.push(report.tsMap[tsId]);
+  }
+
   request({ method : 'PATCH', url : url, body : {
+    allTRTS: allTRTS,
     statistics: {
       total : report.total,
       passed : report.passed,
       failed: report.failed,
       notExecuted: report.notExecuted,
-      notRunnable: report.notRunnable
+      notRunnable: report.notRunnable,
+      executionTime: report.executionTime
     }, remarks : error ?
         (stopped ? (typeof stopped === 'string' ? stopped : 'Test run was stopped by user.')
           : util.cropString(util.stringify(error), RUNNER_LIMIT)) :
@@ -1525,6 +1555,7 @@ vRunner.prototype.afterComplete = function(report){
     passedCount : report.passed,
     notExecutedCount : report.notExecuted,
     notRunnableCount : report.notRunnable,
+    executionTime: report.executionTime,
     remarks : rmk || '',
     resultLink : (this.instanceURL+'/'+this.projectKey+'/testcase') + '?testRunId='+this.testRunId
   };
@@ -1541,7 +1572,7 @@ var getFullName = function(usr){
 };
 
 vRunner.prototype.run = function(next){
-  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0 };
+  var self = this, report = { total : 0, passed : 0, failed : 0, notExecuted : 0, notRunnable : 0, executionTime: 0, tsMap: {}};
   var tasks = [
     function(cb){
       self.sigIn(cb);
