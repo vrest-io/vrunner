@@ -8,7 +8,11 @@
 
 'use strict';
 
-var request = require('request').defaults({ jar: true, json: true, headers: { 'x-vrest-request-source': 'vrunner' } }),
+var request = require('request');
+var vrunnerJar = request.jar();
+request = request.defaults({ jar: vrunnerJar, json: true, headers: { 'x-vrest-request-source': 'vrunner' } });
+
+var
   zSchemaValidator = require('z-schema'),
   events = require('events'),
   jsonSchemaFiles = require('./lib/schemaFiles'),
@@ -1014,7 +1018,7 @@ var getAuthHeader = function(ath, environmentId){
 };
 
 var fireRequest = function(tc, trtc, timeout, callback){
-  var toSend = { testcase : tc }, timeout = Math.floor(timeout);
+  var toSend = { testcase : tc, jar: vrunnerJar }, timeout = Math.floor(timeout);
   if(!(isNaN(timeout))){ toSend.timeout = timeout*1000; }
   runner(toSend,function(result){
     var afterWait = function(){
