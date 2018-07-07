@@ -1,6 +1,6 @@
 # Changelog
 All major/minor version changes to this project will be documented in this file.
-## [0.3.3] - 2017-07-05
+## [0.3.5] - 2017-07-07
 ### Bug Fixes
 - vrunner now resets the cookie if the custom cookie is set in the test case.
 - vurnner now stores all the request headers in execution time details which are being sent by vrunner apart from the headers which user has set in the test case.
