@@ -1212,7 +1212,7 @@ var setAssertionUtil = function(meta){
   });
   for(var ky in meta.assertTests){
     try {
-      funcMap[ky] = eval('(function(a,b){ return '+meta.assertTests[ky]+';})');
+      funcMap[ky] = eval('(function(a,b){ try { return '+meta.assertTests[ky]+'; } catch(er){console.log(er);} return false;})');
     } catch(el){
     }
   }

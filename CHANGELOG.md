@@ -1,5 +1,10 @@
 # Changelog
 All major/minor version changes to this project will be documented in this file.
+
+## [0.3.6] - 2017-07-21
+### Improvements
+- vrunner now supports modifiers (e.g. ignore case through modifier `i`) in regular expressions used in Expected Body and assertions.
+
 ## [0.3.5] - 2017-07-07
 ### Bug Fixes
 - vrunner now resets the cookie if the custom cookie is set in the test case.
