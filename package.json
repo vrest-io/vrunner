@@ -28,15 +28,15 @@
   },
   "bin": "bin/run.js",
   "dependencies": {
-    "request": "2.55.0",
-    "z-schema": "3.10.2",
+    "btoa": "1.1.2",
     "chalk": "1.0.0",
     "crypto-js": "3.1.4",
     "mkdirp": "0.5.1",
+    "request": "^2.88.0",
+    "tough-cookie": "2.4.3",
     "xml2js": "0.4.10",
     "xmldom": "0.1.27",
     "xpath": "0.0.23",
-    "btoa": "1.1.2",
-    "tough-cookie": "2.4.3"
+    "z-schema": "3.10.2"
   }
 }
