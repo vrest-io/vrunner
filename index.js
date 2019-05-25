@@ -1240,50 +1240,55 @@ var assertResults = function(runnerModel, tc, validatorIdCodeMap, validatorIdNam
     applyToValidator = [], initForVal = initForValidator.bind(undefined, headers),
     ret = [], ret1 = [], asserting = assert.bind(undefined, validatorIdCodeMap);
   (tc.getTc('assertions') || []).forEach(function(ass, index){
-    if(ass.id){
-      var now = false, validator = false;
-      if(isValAss(ass)) {
-        var validatorId = util.getModelVal(ass, 'type');
-        validator = validatorIdNameMap[validatorId];
-        if(validatorId === config.meta.schemaValidatorId) {
-          findAndCacheTheSchemas();
-        };
-        var erm = tc.expectedResults;
-        if(!(erm.hasOwnProperty('parsedContent'))){
-          initForVal(runnerModel, applyToValidator, tc);
-        }
-        now = asserting(ass, { forValidator : applyToValidator });
-      } else {
-        now = asserting(ass, findEx(ass, actualResults, runnerModel.executionTime));
-      }
-      if(now){
-        var passed = now.passed, type = now.assertion.type,
-          expected = now.assertion.value, actual = now.assertion.actual,
-          name = now.assertion.name, property = now.assertion.property;
-        if(runnerModel.result && runnerModel.result.content && now.assertion && typeof actual === 'string'
-            && (actual.indexOf(publicConfiguration.copyFromActual) === 0)){
-          if(actual === publicConfiguration.copyFromActual){
-            actual = runnerModel.result.content;
-          } else {
-            actual = getJSONPathValue(runnerModel.result._parsedContent, property, runnerModel.result.resultType);
+    try {
+      if(ass.id){
+        var now = false, validator = false;
+        if(isValAss(ass)) {
+          var validatorId = util.getModelVal(ass, 'type');
+          validator = validatorIdNameMap[validatorId];
+          if(validatorId === config.meta.schemaValidatorId) {
+            findAndCacheTheSchemas();
+          };
+          var erm = tc.expectedResults;
+          if(!(erm.hasOwnProperty('parsedContent'))){
+            initForVal(runnerModel, applyToValidator, tc);
           }
+          now = asserting(ass, { forValidator : applyToValidator });
+        } else {
+          now = asserting(ass, findEx(ass, actualResults, runnerModel.executionTime));
         }
-        var ass = {
-          passed: passed,
-          assertion: {
-            name: name,
-            property: property,
-            type: type,
-            expected: expected,
-            actual: actual
+        if(now && now.assertion){
+          var passed = now.passed, type = now.assertion.type,
+            expected = now.assertion.value, actual = now.assertion.actual,
+            name = now.assertion.name, property = now.assertion.property;
+          if(runnerModel.result && runnerModel.result.content && now.assertion && typeof actual === 'string'
+              && (actual.indexOf(publicConfiguration.copyFromActual) === 0)){
+            if(actual === publicConfiguration.copyFromActual){
+              actual = runnerModel.result.content;
+            } else {
+              actual = getJSONPathValue(runnerModel.result._parsedContent, property, runnerModel.result.resultType);
+            }
           }
-        };
-        ass.resultSummary = AssertionResultUtil.getAssertionResultSummary(
-          index, ass, publicConfiguration.mongoIdRegex, validatorIdNameMap, util.cropString);
-        ret1.push(ass);
-        ret.push(now);
-        isPassed = isPassed && now.passed;
+          var ass = {
+            passed: passed,
+            assertion: {
+              name: name,
+              property: property,
+              type: type,
+              expected: expected,
+              actual: actual
+            }
+          };
+          ass.resultSummary = AssertionResultUtil.getAssertionResultSummary(
+            index, ass, publicConfiguration.mongoIdRegex, validatorIdNameMap, util.cropString);
+          ret1.push(ass);
+          ret.push(now);
+          isPassed = isPassed && now.passed;
+        }
       }
+    } catch(err){
+      console.error(err);
+      isPassed = false;
     }
   });
   runnerModel.assertionRemarks = ret;
