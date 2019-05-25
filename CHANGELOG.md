@@ -1,6 +1,10 @@
 # Changelog
 All major/minor version changes to this project will be documented in this file.
 
+## [0.3.7] - 2019-06-25
+### Improvements
+- vrunner now handles exceptional conditions of assertions during response validation.
+
 ## [0.3.6] - 2017-07-21
 ### Improvements
 - vrunner now supports modifiers (e.g. ignore case through modifier `i`) in regular expressions used in Expected Body and assertions.
