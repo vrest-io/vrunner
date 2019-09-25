@@ -58,7 +58,8 @@ var
   replacingString,
   VARS,
   findHelpers,
-  config;
+  config,
+  gzipOption = false;
 
   function initAll() {
     pages = [false];
@@ -1020,6 +1021,9 @@ var getAuthHeader = function(ath, environmentId){
 var fireRequest = function(tc, trtc, timeout, callback){
   var toSend = { testcase : tc, jar: vrunnerJar }, timeout = Math.floor(timeout);
   if(!(isNaN(timeout))){ toSend.timeout = timeout*1000; }
+  if(gzipOption === true){
+    toSend.gzip = true;
+  }
   runner(toSend,function(result){
     var afterWait = function(){
       if(!result || result.err) {
@@ -1318,6 +1322,9 @@ function vRunner(opts){
   if(opts.nosslcheck === true){
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     delete opts.nosslcheck;
+  }
+  if(opts.gzip === true){
+    gzipOption = true;
   }
   var dk, error, queryObject;
   for(dk in options){

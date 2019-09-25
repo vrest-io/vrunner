@@ -56,6 +56,10 @@ opts.forEach(function(arg){
     case '--nosslcheck':
       options.nosslcheck = (value === 'true');
       break;
+    case '-z':
+    case '--gzip':
+        options.gzip = (value === 'true');
+        break;
     case '-u':
     case '--url':
       options.url = value;
@@ -94,6 +98,7 @@ if(showHelp){
   console.log('                       By default debugging information are not logged.');
   console.log('    -S, --nosslcheck : If this argument is `true`, vRUNNER will process all requests, without Secure Certificate Check.');
   console.log('                       By default Secure Certificate Check is enabled. This option is useful in self-signed certificate issues.');
+  console.log('    -Z, --gzip       : If true, then it automatically decodes the gzip compressed responses.');
   console.log('    -L, --logger     : Your desired logging of the vRUNNER execution process and result.');
   console.log('                       This can be either `console` or `json` or `csv` or `xunit`.');
   console.log('                       By default `console` logger is used.');
