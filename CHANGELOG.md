@@ -1,6 +1,11 @@
 # Changelog
 
 All major/minor version changes to this project will be documented in this file.
+## [0.4.0] - 2019-09-25
+
+### Improvements
+
+- vrunner now automatically handles gzip responses using option --gzip.
 
 ## [0.3.8] - 2019-06-27
 

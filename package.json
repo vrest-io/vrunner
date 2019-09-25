@@ -1,7 +1,7 @@
 {
   "name": "vrunner",
   "description": "Executes vREST test cases on terminal and can be used with cron utility or any continuous integration server.",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "homepage": "https://vrest.io",
   "author": {
     "name": "vREST Team",
