@@ -1,6 +1,12 @@
 # Changelog
 
 All major/minor version changes to this project will be documented in this file.
+## [0.4.1] - 2019-09-29
+
+### Bug fixes
+
+- Bug fixed related to extracting parameters via utility method functionality.
+
 ## [0.4.0] - 2019-09-25
 
 ### Improvements
