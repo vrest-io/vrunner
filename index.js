@@ -1302,7 +1302,7 @@ var setAssertionUtil = function(meta){
             } 
             return false;
           } catch(err){
-            consolelog(err);
+            console.log(err);
             return false;
           }
         }
