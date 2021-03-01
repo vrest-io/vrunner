@@ -1,6 +1,6 @@
 /*
  * vrunner
- * https://vrest.io
+ * https://cloud.vrest.io
  *
  * Copyright (c) 2015 vREST Team
  * Licensed under the MIT license.
@@ -28,7 +28,7 @@ var
   X_PATH = require('xpath'),
   btoa = require('btoa'),
   mainUrlUtil = require('url'),
-  V_BASE_URL = 'https://vrest.io/',
+  V_BASE_URL = 'https://cloud.vrest.io/',
   publicConfiguration = {},
   RUNNER_LIMIT = 5000,
   LOOP_LIMIT = 100,
