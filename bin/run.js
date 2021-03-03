@@ -9,6 +9,7 @@ var options = {
 };
 var opts = process.argv.slice(2), showHelp = false, util = require('./../lib/util');
 var version = require('../package.json').version;
+var pattern = require('./../lib/logoPattern');
 if(!opts.length) showHelp = true;
 
 opts.forEach(function(arg){
@@ -74,6 +75,7 @@ opts.forEach(function(arg){
 
 
 if(showHelp){
+  pattern.printLogo();
   console.log('\n    vRUNNER - Runs vREST test cases.\n');
   console.log('    version - '+version+'\n');
   console.log('    Usage: vrunner --email=<vrest_email> --password=<vrest_password> ');
