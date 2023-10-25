@@ -30,7 +30,7 @@
   "dependencies": {
     "btoa": "1.1.2",
     "chalk": "1.0.0",
-    "crypto-js": "3.1.4",
+    "crypto-js": "4.2.0",
     "mkdirp": "0.5.1",
     "request": "^2.88.0",
     "tough-cookie": "2.4.3",
